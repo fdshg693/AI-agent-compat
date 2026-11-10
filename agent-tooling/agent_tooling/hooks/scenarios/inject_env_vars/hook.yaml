@@ -1,0 +1,15 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+# Claude Code only: the source is adapters/claude/inject_env_vars.py (shared helpers in adapters/claude/common/).
+id: inject_env_vars
+description: Bash/PowerShell 実行前に config/inject_env_vars.yaml で定義した環境変数を export としてコマンドへ注入する
+distributable: true
+agents:
+  claude:
+    registrations:
+      - event: PreToolUse
+        matcher: ^(Bash|PowerShell)$
+    seed_files:
+      - source: inject_env_vars.yaml
+        path: config/inject_env_vars.yaml

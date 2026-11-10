@@ -1,0 +1,17 @@
+# recommend_skills.py (UserPromptSubmit hook) が、ユーザープロンプトに関連しそうな
+# スキルをAIに判定させる際に探索するディレクトリ群 (roots) を定義する。
+# このファイルはフック配置先の config/ に置く（skill-tools が初回インストール時に配置する）。
+#
+# 各 root はプロジェクトルート（CLAUDE_PROJECT_DIR）からの相対パス。存在しないパスは無視される
+# （エラーにはしない）。各 root 配下を再帰的に走査し、SKILL.md
+# （YAML frontmatterに `name` / `description` を持つファイル）を全て収集する。
+#
+# 対象は `.claude/skills` に限らない。無効化されているプラグイン配下のスキルや、
+# 他のAIツール向けのスキル群も自由に追加できる。逆に roots を絞れば特定のスキル群
+# だけを推薦対象にすることも可能（このファイル自体を空にすればフックは何も推薦しない）。
+#
+# 生成物・配布物ディレクトリ（例: site/skills-site/dist 配下）は他 root の SKILL.md と
+# 重複するコピーを含むため roots に含めないこと（含めても name で重複排除はされるが、
+# 無駄なファイル走査が増える）。
+roots:
+  - skills/plugins

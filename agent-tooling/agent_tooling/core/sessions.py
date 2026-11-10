@@ -1,0 +1,672 @@
+"""Tool-independent registry of live AI agent sessions.
+
+One session is one JSON file named from ``agent`` + ``session_id`` so that
+``start`` can create it and ``end`` can delete exactly the same file even when
+the PID or CWD changed in between.  The registry lives in a per-user directory
+(``AGENT_SESSIONS_DIR``, or ``%TEMP%``/XDG locations by default).  All I/O is
+best-effort: hooks must never stop the agent, so callers such as
+``hooks/scenarios/agent_sessions/registry.py`` swallow every exception.
+
+Liveness is a recorded PID plus a real liveness probe.  On Windows,
+``os.kill(pid, 0)`` is never used because it can terminate the process; the
+stdlib ``ctypes`` ``OpenProcess``/``GetExitCodeProcess`` pair is used instead.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+
+from agent_tooling.core.fs_links import is_link_like
+
+SCHEMA_VERSION = 1
+DEFAULT_TTL_SECONDS = 12 * 60 * 60
+DIRECTORY_ENV = "AGENT_SESSIONS_DIR"
+TTL_ENV = "AGENT_SESSIONS_TTL"
+DIRECTORY_NAME = "agent-sessions"
+
+PID_SOURCES = ("agent", "host", "unknown")
+
+SHELL_NAMES = frozenset({"powershell", "pwsh", "cmd", "sh", "bash", "zsh", "dash", "fish", "py"})
+
+_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+_STILL_ACTIVE = 259
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+__all__ = [
+    "DEFAULT_TTL_SECONDS",
+    "DIRECTORY_ENV",
+    "PID_SOURCES",
+    "SCHEMA_VERSION",
+    "TTL_ENV",
+    "default_ttl",
+    "end_session",
+    "entry_state",
+    "find_agent_pid",
+    "is_live",
+    "is_pid_alive",
+    "is_shell_name",
+    "list_entries",
+    "make_entry",
+    "normalize_entry",
+    "prune",
+    "registry_dir",
+    "session_file_name",
+    "session_path",
+    "start_session",
+    "update_session",
+]
+
+
+# --- time helpers -----------------------------------------------------------
+
+
+def _now_dt(now=None):
+    if now is None:
+        return datetime.now(timezone.utc)
+    if isinstance(now, (int, float)):
+        return datetime.fromtimestamp(now, tz=timezone.utc)
+    if isinstance(now, datetime):
+        return now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc)
+
+
+def _iso(dt):
+    return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _epoch(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def default_ttl():
+    """Live-window for ``unknown`` PID sources; env ``AGENT_SESSIONS_TTL``."""
+    raw = os.environ.get(TTL_ENV)
+    if raw:
+        try:
+            value = float(raw)
+        except ValueError:
+            value = None
+        if value is not None and value >= 0:
+            return value
+    return DEFAULT_TTL_SECONDS
+
+
+# --- registry location ------------------------------------------------------
+
+
+def registry_dir(directory=None):
+    if directory:
+        return os.path.abspath(str(directory))
+    env = os.environ.get(DIRECTORY_ENV)
+    if env:
+        return os.path.abspath(env)
+    if sys.platform == "win32":
+        return os.path.join(tempfile.gettempdir(), DIRECTORY_NAME)
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        return os.path.join(runtime, DIRECTORY_NAME)
+    cache = os.environ.get("XDG_CACHE_HOME")
+    if cache:
+        return os.path.join(cache, DIRECTORY_NAME)
+    return os.path.join(os.path.expanduser("~"), ".cache", DIRECTORY_NAME)
+
+
+def _ensure_dir(directory):
+    """Create the registry dir with 0700. Refuse symlinked directories."""
+    try:
+        if is_link_like(directory):
+            return False
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        if sys.platform != "win32":
+            os.chmod(directory, 0o700)
+    except OSError:
+        return False
+    return not is_link_like(directory)
+
+
+def _clean_session_id(session_id):
+    if not isinstance(session_id, str):
+        return None
+    cleaned = session_id.strip()
+    return cleaned or None
+
+
+def _safe_label(raw):
+    label = _LABEL_RE.sub("_", str(raw or "")).strip("._")
+    return label[:80] or "unknown"
+
+
+def session_file_name(agent, session_id):
+    """Deterministic file name for ``agent`` + ``session_id`` (not CWD/PID)."""
+    raw = f"{agent}\n{session_id}"
+    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"{_safe_label(agent)}-{_safe_label(session_id)}-{digest}.json"
+
+
+def session_path(agent, session_id, directory=None):
+    return os.path.join(registry_dir(directory), session_file_name(agent, session_id))
+
+
+# --- entry model ------------------------------------------------------------
+
+
+def make_entry(agent, session_id, *, cwd, pid=0, pid_source="unknown", hook_event=None, now=None):
+    stamp = _iso(_now_dt(now))
+    try:
+        pid_value = int(pid)
+    except (TypeError, ValueError):
+        pid_value = 0
+    return {
+        "schema": SCHEMA_VERSION,
+        "agent": str(agent),
+        "session_id": str(session_id),
+        "pid": pid_value if pid_value > 0 else 0,
+        "pid_source": pid_source if pid_source in PID_SOURCES else "unknown",
+        "cwd": str(cwd) if cwd is not None else "",
+        "started_at": stamp,
+        "last_seen": stamp,
+        "hook_event": hook_event if isinstance(hook_event, str) else None,
+    }
+
+
+def normalize_entry(raw):
+    """Coerce a stored object into a known entry, or ``None`` when unusable."""
+    if not isinstance(raw, dict):
+        return None
+    agent = raw.get("agent")
+    session_id = raw.get("session_id")
+    if not isinstance(agent, str) or not agent.strip():
+        return None
+    if not isinstance(session_id, str) or not session_id.strip():
+        return None
+    try:
+        pid = int(raw.get("pid", 0))
+    except (TypeError, ValueError):
+        pid = 0
+    pid_source = raw.get("pid_source")
+    cwd = raw.get("cwd")
+    hook_event = raw.get("hook_event")
+    return {
+        "schema": raw.get("schema", SCHEMA_VERSION),
+        "agent": agent,
+        "session_id": session_id,
+        "pid": pid if pid > 0 else 0,
+        "pid_source": pid_source if pid_source in PID_SOURCES else "unknown",
+        "cwd": cwd if isinstance(cwd, str) else "",
+        "started_at": raw.get("started_at") if isinstance(raw.get("started_at"), str) else "",
+        "last_seen": raw.get("last_seen") if isinstance(raw.get("last_seen"), str) else "",
+        "hook_event": hook_event if isinstance(hook_event, str) else None,
+    }
+
+
+# --- atomic writes and per-file locks ---------------------------------------
+
+
+def _atomic_write(path, entry):
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(entry, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+        if sys.platform != "win32":
+            os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _acquire_lock(fd, attempts=20, delay=0.01):
+    for _ in range(max(1, attempts)):
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            time.sleep(delay)
+    return False
+
+
+def _release_lock(fd):
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
+def _with_lock(path, action):
+    """Run ``action`` under an exclusive lock. ``None`` when unavailable."""
+    lock_path = path + ".lock"
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError:
+        return None
+    locked = False
+    try:
+        locked = _acquire_lock(fd)
+        if not locked:
+            return None
+        return action()
+    finally:
+        if locked:
+            _release_lock(fd)
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+
+def read_entry(path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return normalize_entry(raw)
+
+
+# --- session lifecycle ------------------------------------------------------
+
+
+def start_session(
+    agent,
+    session_id,
+    *,
+    cwd,
+    pid=0,
+    pid_source="unknown",
+    hook_event=None,
+    directory=None,
+    now=None,
+):
+    """Create (or overwrite) the session file. Only ``start`` creates files."""
+    cleaned = _clean_session_id(session_id)
+    if not cleaned or not isinstance(agent, str) or not agent.strip():
+        return None
+    target_dir = registry_dir(directory)
+    if not _ensure_dir(target_dir):
+        return None
+    path = os.path.join(target_dir, session_file_name(agent, cleaned))
+    entry = make_entry(
+        agent, cleaned, cwd=cwd, pid=pid, pid_source=pid_source, hook_event=hook_event, now=now
+    )
+
+    def action():
+        try:
+            _atomic_write(path, entry)
+        except OSError:
+            return None
+        return path
+
+    return _with_lock(path, action)
+
+
+def update_session(
+    agent,
+    session_id,
+    *,
+    cwd=None,
+    pid=None,
+    pid_source=None,
+    hook_event=None,
+    directory=None,
+    now=None,
+):
+    """Update an existing file only. A missing file is left missing."""
+    cleaned = _clean_session_id(session_id)
+    if not cleaned or not isinstance(agent, str) or not agent.strip():
+        return None
+    path = session_path(agent, cleaned, directory)
+    if not os.path.isfile(path):
+        return None
+
+    def action():
+        entry = read_entry(path)
+        if entry is None:
+            return None
+        if cwd is not None:
+            entry["cwd"] = str(cwd)
+        if pid is not None:
+            try:
+                pid_value = int(pid)
+            except (TypeError, ValueError):
+                pid_value = 0
+            entry["pid"] = pid_value if pid_value > 0 else 0
+        if pid_source is not None:
+            entry["pid_source"] = pid_source if pid_source in PID_SOURCES else "unknown"
+        if hook_event is not None:
+            entry["hook_event"] = hook_event if isinstance(hook_event, str) else entry["hook_event"]
+        entry["last_seen"] = _iso(_now_dt(now))
+        try:
+            _atomic_write(path, entry)
+        except OSError:
+            return None
+        return path
+
+    return _with_lock(path, action)
+
+
+def end_session(agent, session_id, *, directory=None):
+    """Delete the session file. Returns True when a file was removed."""
+    cleaned = _clean_session_id(session_id)
+    if not cleaned or not isinstance(agent, str) or not agent.strip():
+        return False
+    path = session_path(agent, cleaned, directory)
+    if not os.path.isfile(path):
+        return False
+
+    def action():
+        try:
+            os.remove(path)
+        except OSError:
+            return False
+        return True
+
+    return bool(_with_lock(path, action))
+
+
+# --- listing, liveness, prune ----------------------------------------------
+
+
+def is_shell_name(name):
+    base = os.path.basename(str(name or "")).lower()
+    for suffix in (".exe", ".cmd", ".bat", ".com"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+    return base in SHELL_NAMES
+
+
+def is_pid_alive(pid):
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    if sys.platform == "win32":
+        return _windows_pid_alive(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _windows_pid_alive(pid):
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def entry_state(entry, *, now=None, ttl=None):
+    return "live" if is_live(entry, now=now, ttl=ttl) else "stale"
+
+
+def is_live(entry, *, now=None, ttl=None):
+    """PID-primary liveness, with a ``last_seen`` grace for unknown PIDs."""
+    if not isinstance(entry, dict):
+        return False
+    pid = entry.get("pid")
+    source = entry.get("pid_source")
+    if source in ("agent", "host") and isinstance(pid, int) and pid > 0:
+        return is_pid_alive(pid)
+    window = default_ttl() if ttl is None else ttl
+    last = _epoch(entry.get("last_seen"))
+    if last is None:
+        return False
+    return (_now_dt(now).timestamp() - last) <= window
+
+
+def list_entries(directory=None):
+    """Readable entries, sorted by agent, then cwd, then ``started_at``."""
+    target_dir = registry_dir(directory)
+    try:
+        names = sorted(os.listdir(target_dir))
+    except OSError:
+        return []
+    entries = []
+    for name in names:
+        if not name.endswith(".json") or name.startswith("."):
+            continue
+        entry = read_entry(os.path.join(target_dir, name))
+        if entry is not None:
+            entries.append(entry)
+    entries.sort(key=lambda e: (e["agent"], e["cwd"], e["started_at"]))
+    return entries
+
+
+def prune(directory=None, *, now=None, ttl=None):
+    """Remove stale and unreadable session files. Live entries are untouched."""
+    target_dir = registry_dir(directory)
+    try:
+        names = sorted(os.listdir(target_dir))
+    except OSError:
+        return 0
+    removed = 0
+    for name in names:
+        if not name.endswith(".json") or name.startswith("."):
+            continue
+        path = os.path.join(target_dir, name)
+        entry = read_entry(path)
+        if entry is not None and is_live(entry, now=now, ttl=ttl):
+            continue
+
+        def action(target=path):
+            try:
+                os.remove(target)
+            except OSError:
+                return False
+            return True
+
+        if _with_lock(path, action):
+            removed += 1
+    return removed
+
+
+# --- PID ancestry -----------------------------------------------------------
+
+
+def _ps_value(pid, option):
+    try:
+        result = subprocess.run(
+            ["ps", "-o", option, "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    lines = result.stdout.strip().splitlines()
+    if len(lines) < 2:
+        return None
+    return lines[1].strip() or None
+
+
+def _linux_process_name(pid):
+    try:
+        with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+def _linux_parent_pid(pid):
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as handle:
+            data = handle.read()
+    except OSError:
+        return None
+    close = data.rfind(b")")
+    if close < 0:
+        return None
+    fields = data[close + 2 :].split()
+    if len(fields) < 2:
+        return None
+    try:
+        return int(fields[1])
+    except ValueError:
+        return None
+
+
+def _macos_process_name(pid):
+    return _ps_value(pid, "comm=")
+
+
+def _macos_parent_pid(pid):
+    value = _ps_value(pid, "ppid=")
+    try:
+        return int(value) if value else None
+    except ValueError:
+        return None
+
+
+def _process_name(pid):
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if sys.platform == "win32":
+        table = _windows_process_table()
+        record = table.get(pid)
+        return record[1] if record else None
+    if sys.platform == "darwin":
+        return _macos_process_name(pid)
+    name = _linux_process_name(pid)
+    if name is None:
+        name = _macos_process_name(pid)
+    return name
+
+
+def _parent_pid(pid):
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if sys.platform == "win32":
+        table = _windows_process_table()
+        record = table.get(pid)
+        return record[0] if record else None
+    if sys.platform == "darwin":
+        return _macos_parent_pid(pid)
+    parent = _linux_parent_pid(pid)
+    if parent is None:
+        parent = _macos_parent_pid(pid)
+    return parent
+
+
+def _windows_process_table():
+    import ctypes
+    from ctypes import wintypes
+
+    TH32CS_SNAPPROCESS = 0x00000002
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", ctypes.c_wchar * 260),
+        ]
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    invalid = ctypes.c_void_p(-1).value
+    if not snapshot or snapshot == invalid:
+        return {}
+    table = {}
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while ok:
+            table[int(entry.th32ProcessID)] = (
+                int(entry.th32ParentProcessID),
+                entry.szExeFile or "",
+            )
+            ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return table
+
+
+def find_agent_pid(start_pid=None, *, max_depth=16):
+    """Walk ancestors past shells/launchers. Returns ``(pid, pid_source)``."""
+    try:
+        pid = int(start_pid) if start_pid is not None else int(os.getppid())
+    except (TypeError, ValueError):
+        return 0, "unknown"
+    seen = set()
+    for _ in range(max_depth):
+        if pid <= 0 or pid in seen:
+            return 0, "unknown"
+        seen.add(pid)
+        name = _process_name(pid)
+        if name is None:
+            return 0, "unknown"
+        if not is_shell_name(name):
+            return pid, "agent"
+        parent = _parent_pid(pid)
+        if parent is None:
+            return 0, "unknown"
+        pid = parent
+    return 0, "unknown"

@@ -1,0 +1,16 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+# Claude Code only: the source is adapters/claude/skill_usage_tracker.py (shared helpers in adapters/claude/common/).
+id: skill_usage_tracker
+description: 'auto-enquete: true なスキルの使用（Skill 呼び出し・SKILL.md の Read）をセッション単位で記録する'
+distributable: false
+agents:
+  claude:
+    runner: uv-script
+    registrations:
+      - event: PostToolUse
+        matcher: ^(Skill|Read)$
+    seed_files:
+      - source: skill_usage_tracker.yaml
+        path: config/skill_usage_tracker.yaml

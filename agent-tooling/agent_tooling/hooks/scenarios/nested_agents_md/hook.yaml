@@ -1,0 +1,27 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+id: nested_agents_md
+description: ネイティブ discovery が拾わないネスト AGENTS.md を、触ったパスの祖先から注入する
+distributable: true
+agents:
+  claude:
+    registrations:
+      - event: PreToolUse
+        matcher: Read|Edit|Write|Bash
+  codex:
+    registrations:
+      - event: PreToolUse
+        matcher: ^(apply_patch|Bash)$
+        statusMessage: Checking nested AGENTS.md
+        additionalContextLimit: 4000
+  cursor:
+    registrations:
+      - event: postToolUse
+        matcher: Shell|Read|Write|Grep|Delete
+  antigravity:
+    registrations:
+      - event: PreToolUse
+        matcher: view_file|write_to_file|replace_file_content|multi_replace_file_content|run_command
+      - event: PreInvocation
+  kilo: {}

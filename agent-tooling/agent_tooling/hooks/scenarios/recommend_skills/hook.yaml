@@ -1,0 +1,18 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+# Claude Code only: the source is adapters/claude/recommend_skills.py (shared helpers in adapters/claude/common/).
+id: recommend_skills
+description: プロンプト送信ごとに config の roots 配下の SKILL.md を aim_cli で関連度判定し、関連しそうなスキルを提示する
+distributable: false
+agents:
+  claude:
+    # aim_cli is only importable from this repository's uv workspace.
+    runner: uv-project
+    project_imports: [aim_cli, yaml]
+    registrations:
+      - event: UserPromptSubmit
+        timeout: 90
+    seed_files:
+      - source: recommend_skills.yaml
+        path: config/recommend_skills.yaml

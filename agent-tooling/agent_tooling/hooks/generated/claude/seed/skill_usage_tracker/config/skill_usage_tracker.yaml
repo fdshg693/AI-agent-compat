@@ -1,0 +1,16 @@
+# skill_usage_tracker.py (PostToolUse hook) が、Skillツールで指定されたスキル名を
+# SKILL.md のパスへ解決する際に追加で探索するディレクトリ群 (roots) を定義する。
+# このファイルはフック配置先の config/ に置く（skill-tools が初回インストール時に配置する）。
+#
+# `~/.claude/skills`（ユーザースコープ、リポジトリ外のためこのファイルでは
+# 設定不可）は常に検索対象に含まれる。ここに書くのはそれ以外に追加したい root
+# だけでよい。
+#
+# 各 root はプロジェクトルート（CLAUDE_PROJECT_DIR）からの相対パス。存在しないパスは無視される
+# （エラーにはしない）。各 root 配下を再帰的に走査し、SKILL.md の
+# frontmatter `name`（無ければディレクトリ名）で名前を照合する。
+#
+# Read ツールで SKILL.md を直接読んだ場合はこの roots を使わない（読まれた
+# ファイルのパスから直接 frontmatter を読むため、名前解決が不要）。
+roots:
+  - skills/plugins

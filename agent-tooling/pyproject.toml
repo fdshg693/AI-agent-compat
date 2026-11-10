@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-tooling"
+version = "0.1.0"
+description = "Portable agent context sources and cross-tool hook adapters"
+requires-python = ">=3.11"
+dependencies = []
+
+# build/build.py reads scenarios/*/hook.yaml and tests import the yaml-using Claude hooks
+# (recommend_skills, skill_usage_tracker). Distributed hooks declare their own deps (PEP 723).
+[dependency-groups]
+dev = ["pyyaml>=6.0"]
+
+[project.scripts]
+agent-context-check = "agent_tooling.cli:main"
+agent-sessions = "agent_tooling.sessions_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+agent_tooling = [
+    "hooks/generated/**/*.py",
+    "hooks/generated/**/*.ts",
+    "hooks/generated/README.md",
+    "hooks/generated/catalog.json",
+    "hooks/generated/*/seed/**/*",
+]

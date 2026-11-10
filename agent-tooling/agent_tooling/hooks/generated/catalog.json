@@ -1,0 +1,664 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "agent-tooling/agent_tooling/hooks/build/build.py",
+  "hooks": [
+    {
+      "id": "agent_sessions",
+      "description": "AIエージェントのセッション開始/終了/CWD変更をユーザー単位のセッションレジストリへ反映する（注入しない）",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "agent_sessions.py",
+          "files": [
+            {
+              "path": "claude/agent_sessions.py",
+              "installPath": "agent_sessions.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "SessionStart",
+              "matcher": "*"
+            },
+            {
+              "event": "CwdChanged"
+            },
+            {
+              "event": "SessionEnd",
+              "matcher": "*"
+            }
+          ]
+        },
+        "codex": {
+          "runner": "python",
+          "main": "agent_sessions.py",
+          "files": [
+            {
+              "path": "codex/agent_sessions.py",
+              "installPath": "agent_sessions.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "SessionStart",
+              "statusMessage": "Registering agent session"
+            },
+            {
+              "event": "SessionEnd",
+              "statusMessage": "Removing agent session"
+            }
+          ]
+        },
+        "cursor": {
+          "runner": "python",
+          "main": "agent_sessions.py",
+          "files": [
+            {
+              "path": "cursor/agent_sessions.py",
+              "installPath": "agent_sessions.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "sessionStart"
+            },
+            {
+              "event": "sessionEnd"
+            }
+          ]
+        },
+        "antigravity": {
+          "runner": "python",
+          "main": "agent_sessions.py",
+          "files": [
+            {
+              "path": "antigravity/agent_sessions.py",
+              "installPath": "agent_sessions.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "run_command"
+            },
+            {
+              "event": "PreInvocation"
+            },
+            {
+              "event": "Stop"
+            }
+          ]
+        },
+        "kilo": {
+          "runner": "python",
+          "main": "agent_sessions.ts",
+          "files": [
+            {
+              "path": "kilo/agent_sessions.py",
+              "installPath": "agent_sessions.py"
+            },
+            {
+              "path": "kilo/agent_sessions.ts",
+              "installPath": "agent_sessions.ts"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": []
+        }
+      }
+    },
+    {
+      "id": "block_large_read",
+      "description": "閾値を超える巨大ファイルの Read をブロックし、サブエージェントへの委譲を促す",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "block_large_read.py",
+          "files": [
+            {
+              "path": "claude/block_large_read.py",
+              "installPath": "block_large_read.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "Read"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "inject_env_vars",
+      "description": "Bash/PowerShell 実行前に config/inject_env_vars.yaml で定義した環境変数を export としてコマンドへ注入する",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "inject_env_vars.py",
+          "files": [
+            {
+              "path": "claude/inject_env_vars.py",
+              "installPath": "inject_env_vars.py"
+            }
+          ],
+          "seedFiles": [
+            {
+              "path": "claude/seed/inject_env_vars/config/inject_env_vars.yaml",
+              "installPath": "config/inject_env_vars.yaml"
+            }
+          ],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "^(Bash|PowerShell)$"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "long_run_collector",
+      "description": "全ツール呼び出し（成功/失敗）を長時間実行監視ログに記録し、加重操作量や失敗連続回数が閾値に達したら自己点検を促す",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "long_run_collector.py",
+          "files": [
+            {
+              "path": "claude/long_run_collector.py",
+              "installPath": "long_run_collector.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PostToolUse",
+              "matcher": "*"
+            },
+            {
+              "event": "PostToolUseFailure",
+              "matcher": "*"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "long_run_statement_collector",
+      "description": "ターン終了時にトランスクリプトから新しいアシスタント発言を抽出し、long_run_collector と同じ監視ログへ記録する（ブロックしない）",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "long_run_statement_collector.py",
+          "files": [
+            {
+              "path": "claude/long_run_statement_collector.py",
+              "installPath": "long_run_statement_collector.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "Stop"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "nested_agents_md",
+      "description": "ネイティブ discovery が拾わないネスト AGENTS.md を、触ったパスの祖先から注入する",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "nested_agents_md.py",
+          "files": [
+            {
+              "path": "claude/nested_agents_md.py",
+              "installPath": "nested_agents_md.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "Read|Edit|Write|Bash"
+            }
+          ]
+        },
+        "codex": {
+          "runner": "python",
+          "main": "nested_agents_md.py",
+          "files": [
+            {
+              "path": "codex/nested_agents_md.py",
+              "installPath": "nested_agents_md.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "^(apply_patch|Bash)$",
+              "statusMessage": "Checking nested AGENTS.md",
+              "additionalContextLimit": 4000
+            }
+          ]
+        },
+        "cursor": {
+          "runner": "python",
+          "main": "nested_agents_md.py",
+          "files": [
+            {
+              "path": "cursor/nested_agents_md.py",
+              "installPath": "nested_agents_md.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "postToolUse",
+              "matcher": "Shell|Read|Write|Grep|Delete"
+            }
+          ]
+        },
+        "antigravity": {
+          "runner": "python",
+          "main": "nested_agents_md.py",
+          "files": [
+            {
+              "path": "antigravity/nested_agents_md.py",
+              "installPath": "nested_agents_md.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "view_file|write_to_file|replace_file_content|multi_replace_file_content|run_command"
+            },
+            {
+              "event": "PreInvocation"
+            }
+          ]
+        },
+        "kilo": {
+          "runner": "python",
+          "main": "nested_agents_md.ts",
+          "files": [
+            {
+              "path": "kilo/nested_agents_md.py",
+              "installPath": "nested_agents_md.py"
+            },
+            {
+              "path": "kilo/nested_agents_md.ts",
+              "installPath": "nested_agents_md.ts"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": []
+        }
+      }
+    },
+    {
+      "id": "recommend_skills",
+      "description": "プロンプト送信ごとに config の roots 配下の SKILL.md を aim_cli で関連度判定し、関連しそうなスキルを提示する",
+      "distributable": false,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "uv-project",
+          "main": "recommend_skills.py",
+          "files": [
+            {
+              "path": "claude/recommend_skills.py",
+              "installPath": "recommend_skills.py"
+            }
+          ],
+          "seedFiles": [
+            {
+              "path": "claude/seed/recommend_skills/config/recommend_skills.yaml",
+              "installPath": "config/recommend_skills.yaml"
+            }
+          ],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "UserPromptSubmit",
+              "timeout": 90
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "scoped_rules",
+      "description": "触ったパスに paths が一致する Claude Rule（.claude/rules/**/*.md）を注入する",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "scoped_rules.py",
+          "files": [
+            {
+              "path": "claude/scoped_rules.py",
+              "installPath": "scoped_rules.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "Read|Edit|Write|Bash"
+            }
+          ]
+        },
+        "codex": {
+          "runner": "python",
+          "main": "scoped_rules.py",
+          "files": [
+            {
+              "path": "codex/scoped_rules.py",
+              "installPath": "scoped_rules.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "^(apply_patch|Bash)$",
+              "statusMessage": "Checking scoped Claude Rules",
+              "additionalContextLimit": 4000
+            }
+          ]
+        },
+        "cursor": {
+          "runner": "python",
+          "main": "scoped_rules.py",
+          "files": [
+            {
+              "path": "cursor/scoped_rules.py",
+              "installPath": "scoped_rules.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "postToolUse",
+              "matcher": "Shell|Read|Write|Grep|Delete"
+            }
+          ]
+        },
+        "antigravity": {
+          "runner": "python",
+          "main": "scoped_rules.py",
+          "files": [
+            {
+              "path": "antigravity/scoped_rules.py",
+              "installPath": "scoped_rules.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "view_file|write_to_file|replace_file_content|multi_replace_file_content|run_command"
+            },
+            {
+              "event": "PreInvocation"
+            }
+          ]
+        },
+        "kilo": {
+          "runner": "python",
+          "main": "scoped_rules.ts",
+          "files": [
+            {
+              "path": "kilo/scoped_rules.py",
+              "installPath": "scoped_rules.py"
+            },
+            {
+              "path": "kilo/scoped_rules.ts",
+              "installPath": "scoped_rules.ts"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": []
+        }
+      }
+    },
+    {
+      "id": "skill_enquete_stop",
+      "description": "Stop 時に今セッションで使った auto-enquete 対象スキルの未回答アンケートを Claude に回答・保存させる",
+      "distributable": false,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "skill_enquete_stop.py",
+          "files": [
+            {
+              "path": "claude/skill_enquete_stop.py",
+              "installPath": "skill_enquete_stop.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "Stop",
+              "timeout": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "skill_usage_tracker",
+      "description": "auto-enquete: true なスキルの使用（Skill 呼び出し・SKILL.md の Read）をセッション単位で記録する",
+      "distributable": false,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "uv-script",
+          "main": "skill_usage_tracker.py",
+          "files": [
+            {
+              "path": "claude/skill_usage_tracker.py",
+              "installPath": "skill_usage_tracker.py"
+            }
+          ],
+          "seedFiles": [
+            {
+              "path": "claude/seed/skill_usage_tracker/config/skill_usage_tracker.yaml",
+              "installPath": "config/skill_usage_tracker.yaml"
+            }
+          ],
+          "dependencies": [
+            "pyyaml"
+          ],
+          "registrations": [
+            {
+              "event": "PostToolUse",
+              "matcher": "^(Skill|Read)$"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "stop_alert",
+      "description": "応答完了（Stop）時に Windows でアラート音と画面右下のポップアップ通知を出す",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "stop_alert.py",
+          "files": [
+            {
+              "path": "claude/stop_alert.py",
+              "installPath": "stop_alert.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "Stop",
+              "timeout": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "summarize_read",
+      "description": "大きな Read 結果を aim CLI で要約し、要約テキストに差し替える",
+      "distributable": true,
+      "requiresTools": [
+        "aim"
+      ],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "summarize_read.py",
+          "files": [
+            {
+              "path": "claude/summarize_read.py",
+              "installPath": "summarize_read.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PostToolUse",
+              "matcher": "^Read$"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "summarize_webfetch",
+      "description": "大きな WebFetch 結果を全文ログへ保存したうえで aim CLI で要約し、要約と全文ログのパスに差し替える",
+      "distributable": true,
+      "requiresTools": [
+        "aim"
+      ],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "summarize_webfetch.py",
+          "files": [
+            {
+              "path": "claude/summarize_webfetch.py",
+              "installPath": "summarize_webfetch.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PostToolUse",
+              "matcher": "^WebFetch$"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "task_tracker_session",
+      "description": "/task-tracker <task-name> 実行時にタスク用ディレクトリを作り、セッションIDを sessions.md へ記録する",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "task_tracker_session.py",
+          "files": [
+            {
+              "path": "claude/task_tracker_session.py",
+              "installPath": "task_tracker_session.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "UserPromptExpansion",
+              "matcher": "^task-tracker$"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "translate_prompt",
+      "description": "送信されたプロンプトを aim CLI で英訳し、additionalContext として付加する",
+      "distributable": true,
+      "requiresTools": [
+        "aim"
+      ],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "translate_prompt.py",
+          "files": [
+            {
+              "path": "claude/translate_prompt.py",
+              "installPath": "translate_prompt.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "UserPromptSubmit",
+              "timeout": 60
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

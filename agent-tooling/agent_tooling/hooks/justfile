@@ -1,0 +1,21 @@
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+
+# List available recipes
+default:
+    @just --list
+
+# Rebuild hooks/generated/ from core/ + scenarios/ + adapters/
+generate:
+    uv run python "{{justfile_directory()}}/build/build.py"
+
+# Fail if generated/ does not match a fresh build
+generate-check:
+    uv run python "{{justfile_directory()}}/build/build.py" --check
+
+# Validate every Claude Rule frontmatter file
+rules-check:
+    uv run python -c "from pathlib import Path; from agent_tooling.hooks.scenarios.scoped_rules.discovery import validate_rules; validate_rules(Path('.'))"
+
+# Unit tests for discovery, inliner, and adapter stdin/stdout
+test:
+    uv run pytest "{{justfile_directory()}}/tests"

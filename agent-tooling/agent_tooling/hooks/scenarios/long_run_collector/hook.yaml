@@ -1,0 +1,14 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+# Claude Code only: the source is adapters/claude/long_run_collector.py (shared helpers in adapters/claude/common/).
+id: long_run_collector
+description: 全ツール呼び出し（成功/失敗）を長時間実行監視ログに記録し、加重操作量や失敗連続回数が閾値に達したら自己点検を促す
+distributable: true
+agents:
+  claude:
+    registrations:
+      - event: PostToolUse
+        matcher: "*"
+      - event: PostToolUseFailure
+        matcher: "*"

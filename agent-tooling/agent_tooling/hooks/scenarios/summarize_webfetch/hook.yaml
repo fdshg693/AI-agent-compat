@@ -1,0 +1,13 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+# Claude Code only: the source is adapters/claude/summarize_webfetch.py (shared helpers in adapters/claude/common/).
+id: summarize_webfetch
+description: 大きな WebFetch 結果を全文ログへ保存したうえで aim CLI で要約し、要約と全文ログのパスに差し替える
+distributable: true
+requires_tools: [aim]
+agents:
+  claude:
+    registrations:
+      - event: PostToolUse
+        matcher: ^WebFetch$
