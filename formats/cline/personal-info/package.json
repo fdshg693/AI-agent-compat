@@ -1,0 +1,21 @@
+{
+  "name": "cline-personal-info-plugin",
+  "version": "0.1.0",
+  "description": "A minimal Cline plugin that exposes fictional personal information for tool-call checks.",
+  "cline": {
+    "plugins": [
+      {
+        "paths": ["./index.ts"],
+        "capabilities": ["tools"]
+      }
+    ]
+  },
+  "peerDependencies": {
+    "@cline/sdk": "*"
+  },
+  "peerDependenciesMeta": {
+    "@cline/sdk": {
+      "optional": true
+    }
+  }
+}

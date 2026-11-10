@@ -1,0 +1,18 @@
+{
+    "name": "meta",
+    "version": "0.1.0",
+    "description": "Bundle reusable skills and app integrations.",
+    "author": {
+        "name": "Seiwan Maikuma",
+        "email": "xingwanmeixiong@gmail.com"
+    },
+    "license": "MIT",
+    "skills": "./skills/",
+    "interface": {
+        "displayName": "Meta",
+        "shortDescription": "Meta skills",
+        "longDescription": "Meta skills for Codex",
+        "developerName": "Seiwan Maikuma",
+        "category": "Productivity"
+    }
+}

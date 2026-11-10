@@ -4,7 +4,7 @@ discovery does NOT cover.
 
 Codex builds its instruction chain once per session by walking from the
 project root down to the *initial* cwd only (see
-codex-plugins/meta/skills/codex-memory/SKILL.md section 2). Files read or
+skills/plugins/ai-tools-knowledge/skills/codex-memory/SKILL.md section 2). Files read or
 edited outside that root->cwd path never get their local AGENTS.md
 pulled in automatically -- unlike Claude Code's CLAUDE.md, which loads a
 subdirectory's CLAUDE.md the moment Claude reads any file under it (see
