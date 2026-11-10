@@ -11,7 +11,7 @@
 - `../adapters/` — エージェント差分（イベント、注入チャネル、サイズ上限）
 - `build/` — 相対 import を 1 ファイルへインライン化するビルダー
 
-`generated/` は生成物。手編集しない。ソースまたは `.claude/rules/` を変えたら `just --justfile agent-tooling/justfile generate`（lefthook も同じ入力変更で再生成する）。`nested_agents_md` は `AGENTS.md` だけを読み、`scoped_rules` は `.claude/rules/**/*.md` だけを読む。入力を相互に fallback させない。`agent_sessions` はファイルを読まず、開始/終了/CWD変更を `core/sessions.py` のレジストリ（env `AGENT_SESSIONS_DIR`、既定はユーザー単位）へ適用するだけで、コンテキストを注入しない。
+`generated/` は生成物。手編集しない。ソースまたは `.claude/rules/` を変えたら `just --justfile agent-compat/agent-tooling/justfile generate`（lefthook も同じ入力変更で再生成する）。`nested_agents_md` は `AGENTS.md` だけを読み、`scoped_rules` は `.claude/rules/**/*.md` だけを読む。入力を相互に fallback させない。`agent_sessions` はファイルを読まず、開始/終了/CWD変更を `core/sessions.py` のレジストリ（env `AGENT_SESSIONS_DIR`、既定はユーザー単位）へ適用するだけで、コンテキストを注入しない。
 
 ### エージェントを足す
 
@@ -61,9 +61,9 @@ agents:
 ### 検証コマンド
 
 ```text
-just --justfile agent-tooling/justfile test
-just --justfile agent-tooling/justfile rules-check
-just --justfile agent-tooling/justfile generate-check
+just --justfile agent-compat/agent-tooling/justfile test
+just --justfile agent-compat/agent-tooling/justfile rules-check
+just --justfile agent-compat/agent-tooling/justfile generate-check
 ```
 
 Cline は stdin JSON の command hook が無いので生成対象に出さない。Kilo だけプラグイン形（薄い TS が隣の Python を spawn）。scenario ごとに TS + Python の 2 ファイル。
@@ -83,11 +83,11 @@ Cline は stdin JSON の command hook が無いので生成対象に出さない
 
 ### 配置は skill-tools
 
-lefthook もこのディレクトリの作業も、各ツールの hooks.json / 慣例ディレクトリへはコピーしない。配置と登録は `skill-tools hooks install`（[tools/skill-tools/README.md](../../../tools/skill-tools/README.md)）が `generated/catalog.json` を読んで行う。登録するイベント・matcher・オプションの正本は各 `scenarios/<id>/hook.yaml` で、コマンド文字列（配置先パス・runner）は installer が組み立てる。生成元の `../adapters/` ではなく `generated/` を配置・実行する。
+lefthook もこのディレクトリの作業も、各ツールの hooks.json / 慣例ディレクトリへはコピーしない。配置と登録は `skill-tools hooks install`（[tools/skill-tools/README.md](../../../../tools/skill-tools/README.md)）が `generated/catalog.json` を読んで行う。登録するイベント・matcher・オプションの正本は各 `scenarios/<id>/hook.yaml` で、コマンド文字列（配置先パス・runner）は installer が組み立てる。生成元の `../adapters/` ではなく `generated/` を配置・実行する。
 
 - 他プロジェクト: `skill-tools hooks install --agent <agent> <hook-id>`（配置先・登録ファイルの既定表は skill-tools の README）
 - このリポジトリ: リポジトリ直下で `just hooks-install`（初回）/ `just hooks-update`（変更後）。設定は `.claude/skill-tools.hooks.yaml`、成果物は gitignore
-- 全体の流れと設計判断: [maintenance/docs/hook-distribution.md](../../../maintenance/docs/hook-distribution.md)
+- 全体の流れと設計判断: [maintenance/docs/hook-distribution.md](../../../../maintenance/docs/hook-distribution.md)
 
 各ツール固有の注意（登録内容そのものは `hook.yaml` を見る）:
 
@@ -107,11 +107,11 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 - Antigravity: 初回 `PreInvocation`（`invocationNum==0`）を疑似開始、`Stop`（`fullyIdle`）を疑似終了、`PreToolUse`（`run_command` の `args.Cwd`）でCWD更新。PreToolUseは `{"decision":"allow"}`、Stop/PreInvocationは `{}`
 - Kilo: TS の `event` hook が `session.created` / `session.deleted` / `session.updated` を検知して `.py` を spawn（`pid_source: "host"`、`session.idle` は終了扱いしない）
 
-レジストリの場所（`AGENT_SESSIONS_DIR`）と一覧コマンド `agent-sessions`（永続表示 `--watch` を含む）は [agent-tooling/README.md](../../README.md) の「Agent Sessions」を参照。
+レジストリの場所（`AGENT_SESSIONS_DIR`）と一覧コマンド `agent-sessions`（永続表示 `--watch` を含む）は [agent-compat/agent-tooling/README.md](../../README.md) の「Agent Sessions」を参照。
 
 ### テスト
 
-`just --justfile agent-tooling/justfile test`（実エージェントは起動しない）。
+`just --justfile agent-compat/agent-tooling/justfile test`（実エージェントは起動しない）。
 
 - 探索結果がソースと generated で一致すること
 - generated の shebang の次がエントリ docstring であること、`from .` / `from agent_tooling.` / 非 stdlib import が残っていないこと（`test_generated_matches_builder_contract`。lefthook の `generate-check` と二重にしない）

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedBy": "agent-tooling/agent_tooling/hooks/build/build.py",
+  "generatedBy": "agent-compat/agent-tooling/agent_tooling/hooks/build/build.py",
   "hooks": [
     {
       "id": "agent_sessions",

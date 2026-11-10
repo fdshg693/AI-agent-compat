@@ -14,9 +14,10 @@ from agent_tooling.core.bash import extract_bash_dirs
 from agent_tooling.core.discovery import ancestor_chain, find_repo_root
 from agent_tooling.core.paths import split_subcommands, tokenize
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 NESTED = (
     REPO_ROOT
+    / "agent-compat"
     / "agent-tooling"
     / "agent_tooling"
     / "hooks"

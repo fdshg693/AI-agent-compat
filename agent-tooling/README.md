@@ -28,7 +28,7 @@ contracts.
 From a checkout:
 
 ```text
-uv tool install --editable agent-tooling
+uv tool install --editable agent-compat/agent-tooling
 ```
 
 For an installed or packaged copy, install the package with your Python tool
@@ -42,7 +42,7 @@ agent-context-check --staged
 For a locally built wheel, pass its path instead, for example
 `uv tool install /path/to/agent_tooling-0.1.0-py3-none-any.whl`.
 
-When using this repository's checkout, prefer `uv run --project agent-tooling`
+When using this repository's checkout, prefer `uv run --project agent-compat/agent-tooling`
 so the command resolves against the workspace package without a global install.
 
 The generated hook artifacts are distributable package data. They are
@@ -64,11 +64,11 @@ The `agent_sessions` hook scenario registers AI agent sessions in a per-user
 registry, and `agent-sessions` lists them.
 
 ```text
-uv run --project agent-tooling agent-sessions
-uv run --project agent-tooling agent-sessions --all
-uv run --project agent-tooling agent-sessions --prune
-uv run --project agent-tooling agent-sessions --json
-uv run --project agent-tooling agent-sessions --agent claude
+uv run --project agent-compat/agent-tooling agent-sessions
+uv run --project agent-compat/agent-tooling agent-sessions --all
+uv run --project agent-compat/agent-tooling agent-sessions --prune
+uv run --project agent-compat/agent-tooling agent-sessions --json
+uv run --project agent-compat/agent-tooling agent-sessions --agent claude
 ```
 
 After installing the package, the equivalent command is `agent-sessions`. The
@@ -91,10 +91,10 @@ Kilo `host` PID. The cleanup lives in the CLI only; the hooks never perform it.
 `--interval` seconds (default `3`) until interrupted with `Ctrl-C`:
 
 ```text
-uv run --project agent-tooling agent-sessions --watch
-uv run --project agent-tooling agent-sessions --watch --interval 1
-uv run --project agent-tooling agent-sessions --watch --json
-uv run --project agent-tooling agent-sessions --watch --all --prune
+uv run --project agent-compat/agent-tooling agent-sessions --watch
+uv run --project agent-compat/agent-tooling agent-sessions --watch --interval 1
+uv run --project agent-compat/agent-tooling agent-sessions --watch --json
+uv run --project agent-compat/agent-tooling agent-sessions --watch --all --prune
 ```
 
 The output depends on where it is written:
@@ -121,10 +121,10 @@ Liveness is PID-based; entries whose PID source is unknown fall back to the
 ## Development
 
 ```text
-just --justfile agent-tooling/justfile generate
-just --justfile agent-tooling/justfile generate-check
-just --justfile agent-tooling/justfile rules-check
-just --justfile agent-tooling/justfile test
+just --justfile agent-compat/agent-tooling/justfile generate
+just --justfile agent-compat/agent-tooling/justfile generate-check
+just --justfile agent-compat/agent-tooling/justfile rules-check
+just --justfile agent-compat/agent-tooling/justfile test
 ```
 
 The existing hook regeneration job is intentionally the only automatic hook
@@ -136,8 +136,8 @@ job. Context checks are advisory commands and are not registered in
 After staging a commit, inspect the context sources that may need review:
 
 ```text
-uv run --project agent-tooling agent-context-check --staged
-uv run --project agent-tooling agent-context-check --staged --format json
+uv run --project agent-compat/agent-tooling agent-context-check --staged
+uv run --project agent-compat/agent-tooling agent-context-check --staged --format json
 ```
 
 After installing the package, the equivalent command is
@@ -165,8 +165,8 @@ directory.
 Use `explain` to inspect context candidates for a file without staging it:
 
 ```text
-uv run --project agent-tooling agent-context-check explain src/app.py
-uv run --project agent-tooling agent-context-check explain C:/work/project/src/app.py --format json
+uv run --project agent-compat/agent-tooling agent-context-check explain src/app.py
+uv run --project agent-compat/agent-tooling agent-context-check explain C:/work/project/src/app.py --format json
 ```
 
 Relative paths are resolved from the invocation directory and reported relative

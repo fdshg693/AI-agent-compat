@@ -85,7 +85,7 @@ def install_hook(tmp_path):
 
     def install(hook_id: str) -> InstalledHook:
         source = GENERATED_CLAUDE / f"{hook_id}.py"
-        assert source.is_file(), "run: just --justfile agent-tooling/justfile generate"
+        assert source.is_file(), "run: just --justfile agent-compat/agent-tooling/justfile generate"
         project = tmp_path / "project"
         hooks_dir = project / ".claude" / "hooks"
         hooks_dir.mkdir(parents=True, exist_ok=True)

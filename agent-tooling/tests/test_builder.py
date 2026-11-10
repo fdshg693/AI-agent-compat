@@ -28,7 +28,7 @@ from agent_tooling.hooks.scenarios.nested_agents_md.discovery import collect_nes
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "agent_tooling"
 HOOKS_ROOT = PACKAGE_ROOT / "hooks"
-REPO_ROOT = PACKAGE_ROOT.parents[1]
+REPO_ROOT = PACKAGE_ROOT.parents[2]
 GENERATED_NESTED = HOOKS_ROOT / "generated" / "codex" / "nested_agents_md.py"
 # Formerly .claude/hooks/*.py; behavior tests live in tests/claude_hooks/.
 CLAUDE_ONLY_HOOKS = (
@@ -95,10 +95,10 @@ def test_entries_covers_complete_agents():
 
 def test_generated_matches_builder_contract():
     python_outputs = [PACKAGE_ROOT / e.output for e in ENTRIES]
-    assert python_outputs, "run: just --justfile agent-tooling/justfile generate"
+    assert python_outputs, "run: just --justfile agent-compat/agent-tooling/justfile generate"
     for path in python_outputs:
         assert path.is_file(), (
-            f"missing {path}: run just --justfile agent-tooling/justfile generate"
+            f"missing {path}: run just --justfile agent-compat/agent-tooling/justfile generate"
         )
         text = path.read_text(encoding="utf-8")
         assert_complete_contract(text)
@@ -241,7 +241,9 @@ def test_generated_has_no_hooks_docstring_contract():
 
 def test_catalog_matches_hook_yaml_and_generated_files():
     catalog_path = PACKAGE_ROOT / CATALOG_OUTPUT
-    assert catalog_path.is_file(), "run: just --justfile agent-tooling/justfile generate"
+    assert catalog_path.is_file(), (
+        "run: just --justfile agent-compat/agent-tooling/justfile generate"
+    )
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     assert catalog["schemaVersion"] == 1
     specs = load_hook_specs(PACKAGE_ROOT)

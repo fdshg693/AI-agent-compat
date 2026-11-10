@@ -206,7 +206,7 @@ def _write_roots_config(hook_, roots):
 
 def test_e2e_skill_tool_invocation_resolves_name_and_records(install_hook):
     hook_ = install_hook("skill_usage_tracker")
-    skill_dir = hook_.project / "skills/plugins" / "meta" / "skills" / "on-disk-name"
+    skill_dir = hook_.project / "skills/plugins" / "cc-knowledge" / "skills" / "on-disk-name"
     _write_skill(skill_dir, name="my-skill", auto_enquete=True)
     _write_roots_config(hook_, ["skills/plugins/cc-knowledge/skills"])
 
@@ -216,7 +216,7 @@ def test_e2e_skill_tool_invocation_resolves_name_and_records(install_hook):
 
 def test_e2e_skill_tool_invocation_with_plugin_prefix(install_hook):
     hook_ = install_hook("skill_usage_tracker")
-    skill_dir = hook_.project / "skills/plugins" / "meta" / "skills" / "prefixed-skill"
+    skill_dir = hook_.project / "skills/plugins" / "cc-knowledge" / "skills" / "prefixed-skill"
     _write_skill(skill_dir, name="prefixed-skill", auto_enquete=True)
     _write_roots_config(hook_, ["skills/plugins/cc-knowledge/skills"])
 
