@@ -1,0 +1,9 @@
+{
+  "name": "my-dev-tools",
+  "description": "Reusable development utilities for the team",
+  "version": "1.0.0",
+  "agents": "agents/",
+  "skills": "skills/",
+  "hooks": "hooks.json",
+  "mcpServers": ".mcp.json"
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex Sample Skill"
+  short_description: "Review API changes consistently."
+  default_prompt: "Use $codex-sample-skill to review this API change."
+
+policy:
+  allow_implicit_invocation: false

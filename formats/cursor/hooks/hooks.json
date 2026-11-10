@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python .cursor/hooks/block_rm.py",
+        "timeout": 30,
+        "matcher": "rm |curl|wget"
+      }
+    ]
+  }
+}

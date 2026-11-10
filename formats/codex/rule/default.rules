@@ -1,0 +1,6 @@
+# Codex execpolicy rules (Starlark). Most restrictive decision wins: forbidden > prompt > allow.
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "Pushing changes the remote; ask first.",
+)

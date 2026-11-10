@@ -1,0 +1,5 @@
+// Real location: kilo.jsonc at the project root (global: ~/.config/kilo/kilo.jsonc).
+// Kilo rules are plain Markdown; this `instructions` array decides which files load and in what order.
+{
+  "instructions": [".kilo/rules/formatting.md", ".kilo/rules/*.md"],
+}

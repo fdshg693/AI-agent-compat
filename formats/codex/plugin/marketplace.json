@@ -1,0 +1,20 @@
+{
+  "name": "local-example-plugins",
+  "interface": {
+    "displayName": "Local Example Plugins"
+  },
+  "plugins": [
+    {
+      "name": "my-plugin",
+      "source": {
+        "source": "local",
+        "path": "./plugins/my-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
