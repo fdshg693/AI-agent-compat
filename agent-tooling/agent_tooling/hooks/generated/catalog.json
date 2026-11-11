@@ -547,6 +547,23 @@
               "timeout": 15
             }
           ]
+        },
+        "kilo": {
+          "runner": "python",
+          "main": "stop_alert.ts",
+          "files": [
+            {
+              "path": "kilo/stop_alert.py",
+              "installPath": "stop_alert.py"
+            },
+            {
+              "path": "kilo/stop_alert.ts",
+              "installPath": "stop_alert.ts"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": []
         }
       }
     },

@@ -33,6 +33,13 @@ flattens every inlined module into one namespace. Paths follow
 next to the installed file (`hook_dir()`), and project content is resolved
 with `resolve_project_dir(payload)`.
 
+`stop_alert` is the one Claude-only hook that also has a Kilo port:
+`adapters/kilo/stop_alert.ts` listens for `session.idle` (skipping subagent
+sessions that have a `parentID`) and spawns, without waiting,
+`adapters/kilo/stop_alert.py`, which reuses the Claude `common/` sound and
+popup helpers via absolute `agent_tooling.adapters.claude.common.*` imports.
+Both are built to `hooks/generated/kilo/stop_alert.*`.
+
 The build manifest owns this agent x scenario mapping. Existing AGENTS targets
 remain independently buildable while Rule and session targets are added
 alongside them. Edit scenario and target sources first; the builder then

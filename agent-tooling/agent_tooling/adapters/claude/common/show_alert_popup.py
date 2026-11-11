@@ -38,6 +38,7 @@ POPUP_FLAG = "--popup"
 DEFAULT_POPUP_TEXT = "Claude Codeの応答が完了しました"
 DEFAULT_POPUP_SECONDS = 300.0
 UNKNOWN_PROJECT_TITLE = "unknown"
+DEFAULT_APP_NAME = "Claude Code"
 
 
 def _env_float(name: str, default: float) -> float:
@@ -100,8 +101,17 @@ def _resolve_project_title() -> str:
     return UNKNOWN_PROJECT_TITLE
 
 
-def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
+def show_popup(
+    text: str | None = None,
+    seconds: float | None = None,
+    project_title: str | None = None,
+    app_name: str = DEFAULT_APP_NAME,
+) -> dict:
     """ポップアップをデタッチした別プロセスで表示する（呼び出し元をブロックしない）。
+
+    `project_title` を渡せば `_resolve_project_title()` を使わない（Kilo のように
+    `CLAUDE_PROJECT_DIR` が無く、呼び出し元がセッションのディレクトリを知っている場合）。
+    `app_name` はタイトルバーの接頭辞（既定 "Claude Code"）。
 
     この関数は可能な限り例外を外に出さない。失敗してもフックを壊さない。
     """
@@ -117,7 +127,7 @@ def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
         if seconds is not None
         else _env_float("STOP_ALERT_POPUP_SECONDS", DEFAULT_POPUP_SECONDS)
     )
-    project_title = _resolve_project_title()
+    project_title = project_title or _resolve_project_title()
 
     try:
         # CREATE_NO_WINDOW: コンソールウィンドウを一切作らない。DETACHED_PROCESS
@@ -134,6 +144,7 @@ def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
                 message,
                 str(duration),
                 project_title,
+                app_name,
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -153,19 +164,20 @@ def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
 
 
 def run_popup_window(argv: list[str]) -> None:
-    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project]`（省略可）。"""
+    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project, app]`（省略可）。"""
     text = argv[0] if len(argv) > 0 else DEFAULT_POPUP_TEXT
     seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
     project_title = argv[2] if len(argv) > 2 else _resolve_project_title()
-    _run_window(text, seconds, project_title)
+    app_name = argv[3] if len(argv) > 3 else DEFAULT_APP_NAME
+    _run_window(text, seconds, project_title, app_name)
 
 
-def _run_window(text: str, seconds: float, project_title: str) -> None:
+def _run_window(text: str, seconds: float, project_title: str, app_name: str) -> None:
     """実際にポップアップを描画する。"""
     import tkinter as tk
 
     root = tk.Tk()
-    root.title(f"Claude Code - {project_title}")
+    root.title(f"{app_name} - {project_title}")
     root.attributes("-topmost", True)
     try:
         root.attributes("-toolwindow", True)
