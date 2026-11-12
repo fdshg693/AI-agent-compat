@@ -28,7 +28,7 @@
 - `scenarios/<id>/` には `hook.yaml`（`agents` は `claude` のみ）と seed テンプレートだけを置く。本体は `../adapters/claude/<id>.py`、共通処理は `../adapters/claude/common/`（旧 `_lib/`）。`ENTRIES` は `build.py` 末尾の Claude 専用フック一覧に id を足す
 - `common/` は関数 import（`from .common.runtime import init_hook_context`）で使う。`runtime.foo()` のようなモジュール名前空間アクセスはインライン化後に残らない
 - パスは `common/paths.py` に従う。フック自身の `config/<id>.yaml`・`.env`・`state/`・`logs/`・`alert.wav` は `hook_dir()`（配置されたファイルの隣。`.claude/hooks/` に置けば従来と同じ場所）、プロジェクト側（`.claude/tasks/`、スキルの roots）は `resolve_project_dir(payload)`（`CLAUDE_PROJECT_DIR` → stdin `cwd` → git top level → cwd）
-- `stop_alert` の音・ポップアップの実装は `../notify/`（OS ごとのバックエンド）。`stop_alert.py` は `STOP_ALERT_*`・`.env`・`alert.wav` の場所を解決して引数で渡すだけ
+- `stop_alert` の音・視覚通知の実装は `../notify/`（OS ごとのバックエンド。Windows はポップアップ、macOS は通知センター、それ以外は何もしない）。`stop_alert.py` は `STOP_ALERT_*`・`.env`・`alert.wav` の場所・通知ヘルパーの場所を解決して引数で渡すだけ。macOS で同じセッションの通知を置き換えるには `ClaudeNotify.app` のビルドが要る（[../notify/AGENTS.md](../notify/AGENTS.md)）
 - 子プロセスで自分を再実行するもの（`stop_alert` のポップアップ）は `__file__` ではなく `sys.argv[0]` とエントリ側の argv 分岐（`--popup`。`stop_alert.py` に置く）を使う。インライン先の `if __name__ == "__main__":` は消えるため
 - リポジトリ構造前提のもの（`recommend_skills` / `skill_usage_tracker` / `skill_enquete_stop`）は `distributable: false`。非stdlib依存は PEP 723（`skill_usage_tracker`）か `runner: uv-project` + `project_imports`（`recommend_skills`）で宣言する
 - テストは `../../tests/claude_hooks/`。振る舞いは生成物を一時 `<project>/.claude/hooks/` にコピーして stdin JSON で流す

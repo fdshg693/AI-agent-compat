@@ -267,3 +267,23 @@ def test_show_popup_respawns_running_hook_with_popup_flag(monkeypatch, clean_hoo
     assert argv[0] == sys.executable
     assert Path(argv[1]) == Path("C:/hooks/stop_alert.py").resolve()
     assert argv[2:] == [stop_alert.POPUP_FLAG, "hi", "5", "my-project"]
+
+
+def test_show_popup_on_macos_posts_keyed_by_session(monkeypatch, clean_hook_env, tmp_path):
+    """macOS: no child process; the notification is keyed by session_id and
+    shows the cwd (home shortened) as its subtitle."""
+    calls = []
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    monkeypatch.setitem(
+        notify._POPUP_SPAWNERS, "darwin", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/work/my-project")
+
+    stop_alert.show_popup(session_id="sid", cwd=str(tmp_path / "w"))
+    ((args, kwargs),) = calls
+    assert args[0] == stop_alert.DEFAULT_POPUP_TEXT
+    assert args[2] == "my-project"
+    assert kwargs["subtitle"] == "~/w"
+    assert kwargs["notification_id"] == "sid"
+    assert kwargs["helper_app"].name == f"{stop_alert.MAC_HELPER_NAME}.app"

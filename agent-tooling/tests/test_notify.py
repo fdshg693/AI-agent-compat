@@ -1,6 +1,6 @@
-"""agent_tooling/notify/: OS ごとの振り分けと Windows バックエンドの分岐。
+"""agent_tooling/notify/: OS ごとの振り分けと Windows／macOS バックエンドの分岐。
 
-実際の音・ウィンドウは出さない（winsound・Popen を差し替える）。
+実際の音・ウィンドウ・通知は出さない（winsound・subprocess を差し替える）。
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from agent_tooling import notify
+from agent_tooling.notify import macos as notify_macos
 from agent_tooling.notify import project as notify_project
 from agent_tooling.notify import windows as notify_windows
 
@@ -58,7 +59,7 @@ def test_dispatch_selects_backend_by_platform(monkeypatch):
 
 
 def test_backend_exception_does_not_escape(monkeypatch):
-    def boom(*_args):
+    def boom(*_args, **_kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(notify.sys, "platform", "win32")
@@ -70,7 +71,30 @@ def test_backend_exception_does_not_escape(monkeypatch):
 
 
 def test_backend_tables_cover_the_same_platforms():
-    assert set(notify._SOUND_BACKENDS) == set(notify._POPUP_SPAWNERS) == set(notify._POPUP_WINDOWS)
+    assert set(notify._SOUND_BACKENDS) == set(notify._POPUP_SPAWNERS) == {"win32", "darwin"}
+    # 子プロセスで描くのは Windows だけ
+    assert set(notify._POPUP_WINDOWS) <= set(notify._POPUP_SPAWNERS)
+
+
+def test_darwin_dispatches_popup_to_mac_backend(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    monkeypatch.setitem(
+        notify._POPUP_SPAWNERS, "darwin", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    notify.notify_popup(
+        "t",
+        1,
+        "p",
+        entry_script=Path("x.py"),
+        popup_flag="--popup",
+        subtitle="~/w",
+        notification_id="sid",
+        helper_app=tmp_path / "X.app",
+    )
+    ((args, kwargs),) = calls
+    assert args == ("t", 1, "p", Path("x.py"), "--popup")
+    assert kwargs == {"subtitle": "~/w", "notification_id": "sid", "helper_app": tmp_path / "X.app"}
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +211,174 @@ def test_win_spawn_popup_reruns_entry_script(monkeypatch):
         "5.0",
         "proj",
     ]
+
+
+# ---------------------------------------------------------------------------
+# macOS バックエンド（subprocess を差し替え、渡る引数だけを見る）
+# ---------------------------------------------------------------------------
+
+
+class FakeRun:
+    """`subprocess.run` の代わり。argv を記録し、プログラム名ごとの終了コードを返す。"""
+
+    def __init__(self, codes: dict[str, int] | None = None):
+        self.calls: list[list[str]] = []
+        self.codes = codes or {}
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        code = self.codes.get(Path(argv[0]).name, 0)
+        return subprocess.CompletedProcess(argv, code, stdout="", stderr="err" if code else "")
+
+
+@pytest.fixture
+def helper_app(tmp_path):
+    app = tmp_path / "ClaudeNotify.app"
+    binary = app / "Contents" / "MacOS" / "ClaudeNotify"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("")
+    return app
+
+
+@pytest.fixture
+def fake_run(monkeypatch):
+    def install(**codes):
+        fake = FakeRun(codes)
+        monkeypatch.setattr(notify_macos.subprocess, "run", fake)
+        return fake
+
+    return install
+
+
+def test_mac_post_uses_helper_with_id(fake_run, helper_app):
+    fake = fake_run()
+    result = notify_macos._mac_post(
+        "T", "~/w", "B", sound="Glass", notification_id="sid", helper_app=helper_app
+    )
+    assert result == {"ok": True, "mode": "helper"}
+    (argv,) = fake.calls
+    assert argv == [
+        str(helper_app / "Contents" / "MacOS" / "ClaudeNotify"),
+        *("post", "--id", "sid", "--title", "T", "--subtitle", "~/w", "--body", "B"),
+        *("--sound", "Glass"),
+    ]
+
+
+def test_mac_post_falls_back_to_osascript_without_helper(fake_run, tmp_path):
+    fake = fake_run()
+    result = notify_macos._mac_post(
+        "T", "S", "B", notification_id="sid", helper_app=tmp_path / "Missing.app"
+    )
+    assert result["mode"] == "osascript"
+    assert result["helper"]["mode"] == "helper_missing"
+    (argv,) = fake.calls
+    assert argv[:2] == ["osascript", "-e"]
+    # 値は argv で渡す（スクリプトに埋め込まない）
+    assert argv[3:] == ["T", "S", "B", ""]
+
+
+@pytest.mark.parametrize("code", [1, 2])
+def test_mac_post_falls_back_when_helper_fails(fake_run, helper_app, code):
+    fake = fake_run(ClaudeNotify=code)
+    result = notify_macos._mac_post("T", "S", "B", notification_id="sid", helper_app=helper_app)
+    assert result["mode"] == "osascript"
+    assert result["helper"]["mode"] == "helper_failed"
+    assert [Path(argv[0]).name for argv in fake.calls] == ["ClaudeNotify", "osascript"]
+
+
+def test_mac_post_does_nothing_when_denied(fake_run, helper_app):
+    fake = fake_run(ClaudeNotify=3)
+    result = notify_macos._mac_post("T", "S", "B", notification_id="sid", helper_app=helper_app)
+    assert result["mode"] == "helper_denied"
+    assert result["ok"] is False
+    assert len(fake.calls) == 1
+
+
+def test_mac_post_without_id_skips_helper(fake_run, helper_app):
+    fake = fake_run()
+    assert notify_macos._mac_post("T", "S", "B", helper_app=helper_app)["mode"] == "osascript"
+    assert [argv[0] for argv in fake.calls] == ["osascript"]
+
+
+def test_mac_post_reports_osascript_failure(fake_run):
+    fake_run(osascript=1)
+    result = notify_macos._mac_post("T", "S", "B")
+    assert result["ok"] is False
+    assert result["mode"] == "osascript_failed"
+
+
+def test_mac_helper_timeout_is_reported(monkeypatch, helper_app):
+    def slow(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    monkeypatch.setattr(notify_macos.subprocess, "run", slow)
+    result = notify_macos._mac_remove("sid", helper_app=helper_app, timeout=2)
+    assert result == {"ok": False, "mode": "helper_timeout", "detail": "2s"}
+
+
+def test_mac_remove(fake_run, helper_app):
+    fake = fake_run()
+    assert notify_macos._mac_remove("", helper_app=helper_app) == {"ok": False, "mode": "no_id"}
+    assert notify_macos._mac_remove("sid", helper_app=helper_app) == {"ok": True, "mode": "helper"}
+    assert fake.calls[0][1:] == ["remove", "--id", "sid"]
+
+
+def test_mac_play_sound_detaches_afplay(monkeypatch, tmp_path):
+    spawned = []
+    monkeypatch.setattr(
+        notify_macos.subprocess, "Popen", lambda argv, **kwargs: spawned.append((argv, kwargs))
+    )
+    wav = tmp_path / "alert.wav"
+    assert notify_macos._mac_play_sound(wav) == {"ok": True, "mode": "afplay", "path": str(wav)}
+    assert notify_macos._mac_play_sound(None)["path"] == str(notify_macos._MAC_DEFAULT_SOUND)
+    (argv, kwargs), _ = spawned
+    assert argv == ["afplay", str(wav)]
+    assert kwargs["start_new_session"] is True
+
+
+def test_mac_spawn_popup_posts_without_sound(monkeypatch, helper_app):
+    posted = []
+    monkeypatch.setattr(
+        notify_macos, "_mac_post", lambda *args, **kwargs: posted.append((args, kwargs)) or {}
+    )
+    notify_macos._mac_spawn_popup(
+        "line1\n  line2",
+        300,
+        "proj",
+        Path("x.py"),
+        "--popup",
+        subtitle="~/w",
+        notification_id="sid",
+        helper_app=helper_app,
+    )
+    ((args, kwargs),) = posted
+    assert args == ("proj", "~/w", "line1 line2")
+    assert kwargs == {"notification_id": "sid", "helper_app": helper_app}
+
+
+def test_mac_helper_app_default_location():
+    app = notify.mac_helper_app("ClaudeNotify")
+    assert app.name == "ClaudeNotify.app"
+    assert app.is_absolute()
+
+
+# ---------------------------------------------------------------------------
+# 文字列の整形
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_body_collapses_whitespace_and_limits_length():
+    assert notify.truncate_body("a\n  b\tc") == "a b c"
+    assert notify.truncate_body("x" * 130) == "x" * 120 + "…"
+    assert notify.truncate_body("x" * 120) == "x" * 120
+
+
+def test_shorten_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert notify.shorten_home(str(tmp_path / "w")) == "~/w"
+    assert notify.shorten_home(str(tmp_path)) == "~"
+    assert notify.shorten_home(str(tmp_path) + "x") == str(tmp_path) + "x"
+    assert notify.shorten_home("") == ""
 
 
 # ---------------------------------------------------------------------------

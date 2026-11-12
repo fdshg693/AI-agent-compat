@@ -96,9 +96,16 @@ def _win_play_sound(sound_path: Path | None) -> dict:
 
 
 def _win_spawn_popup(
-    text: str, seconds: float, project: str, entry_script: Path, popup_flag: str
+    text: str,
+    seconds: float,
+    project: str,
+    entry_script: Path,
+    popup_flag: str,
+    **_mac_only: object,
 ) -> dict:
     """ポップアップを描く子プロセスをデタッチして起動し、すぐ戻る。
+
+    `_mac_only`（`subtitle`・`notification_id`・`helper_app`）は macOS 用で、ここでは使わない。
 
     tkinter の mainloop は自プロセスをブロックするため、フック本体の応答を待たせない
     よう別プロセスにする。インライン化後はこのモジュールのファイルが配置先に無いので、

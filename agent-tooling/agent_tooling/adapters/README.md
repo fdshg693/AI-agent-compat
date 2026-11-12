@@ -33,8 +33,9 @@ flattens every inlined module into one namespace. Paths follow
 next to the installed file (`hook_dir()`), and project content is resolved
 with `resolve_project_dir(payload)`.
 `stop_alert` takes its sound and popup backends from `agent_tooling/notify/`
-(per-OS dispatch, no environment or `.env` reads); the adapter resolves
-`STOP_ALERT_*`, `.env` and `alert.wav` and passes the values in.
+(per-OS dispatch: Windows popup, macOS Notification Center; no environment or
+`.env` reads); the adapter resolves `STOP_ALERT_*`, `.env`, `alert.wav` and the
+macOS helper `.app` location and passes the values in.
 
 The build manifest owns this agent x scenario mapping. Existing AGENTS targets
 remain independently buildable while Rule and session targets are added

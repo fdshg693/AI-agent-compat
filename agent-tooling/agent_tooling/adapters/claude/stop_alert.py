@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Stop hook that plays an alert sound and shows a popup window when Claude
-finishes a turn.
+"""Stop hook that plays an alert sound and shows a visual notification when
+Claude finishes a turn.
 
-On Windows, plays `alert.wav` next to the installed hook if present (or the
-path in `STOP_ALERT_SOUND`); otherwise falls back to a system beep. Also
-spawns a detached, auto-closing tkinter popup (bottom-right, always-on-top)
-so a muted/misconfigured sound setup still surfaces a visible notification.
-The popup runs in a child process that re-executes this same file with
-`--popup`. Never blocks the stop (always exits 0). Honors `stop_hook_active`
-to avoid Stop-hook re-entry loops even though this hook does not block.
+- Windows: plays `alert.wav` next to the installed hook if present (or the
+  path in `STOP_ALERT_SOUND`); otherwise falls back to a system beep. Also
+  spawns a detached, auto-closing tkinter popup (bottom-right, always-on-top)
+  that runs in a child process re-executing this same file with `--popup`.
+- macOS: plays the same sound file (or a system sound) with `afplay` without
+  waiting, and posts a Notification Center notification (title = project,
+  subtitle = cwd). With the ClaudeNotify helper .app built
+  (`just --justfile agent-compat/agent-tooling/justfile notify-helper-mac`),
+  the notification is keyed by `session_id` so each session keeps only its
+  latest one; otherwise it falls back to `osascript`.
+- Other OSes: does nothing (`unsupported`).
+
+Never blocks the stop (always exits 0). Honors `stop_hook_active` to avoid
+Stop-hook re-entry loops even though this hook does not block.
 
 手動確認（配置済みファイルに対して実行する）:
 - `python stop_alert.py --sound` 音だけ鳴らして結果を表示する（0=成功、1=失敗）
@@ -17,12 +24,15 @@ to avoid Stop-hook re-entry loops even though this hook does not block.
 
 """
 環境変数（省略可）:
-- `STOP_ALERT_SOUND`         再生する WAV の絶対／相対パス。未設定なら
-                              配置先ディレクトリの `alert.wav` を探し、無ければシステムビープ。
+- `STOP_ALERT_SOUND`         再生する音ファイルの絶対／相対パス（Windows は WAV のみ）。未設定なら
+                              配置先ディレクトリの `alert.wav` を探し、無ければシステムの音
+                              （Windows はビープ、macOS は Glass）。
 - `STOP_ALERT_SOUND_ENABLED` 音そのものを鳴らすかどうか（true/false等）。未設定なら true。
                               false にするとポップアップ通知のみになる。
 - `STOP_ALERT_POPUP`         ポップアップ通知を出すかどうか（true/false等）。未設定なら true。
+                              macOS では通知センターへの通知を出すかどうか。
 - `STOP_ALERT_POPUP_SECONDS` ポップアップが自動で閉じるまでの秒数。未設定なら 300。
+                              macOS では使わない（表示時間は通知センターの設定に従う）。
 - `STOP_ALERT_POPUP_TEXT`    ポップアップに表示するメッセージ。未設定なら既定文言。
 - `HOOK_LOG`                  このフックの「デバッグログ」を配置先ディレクトリの`logs/stop_alert/`
                               に書き出すかどうか（true/false等）。フック自体の有効/無効ではない
@@ -36,10 +46,12 @@ import sys
 from pathlib import Path
 
 from agent_tooling.notify import (
+    mac_helper_app,
     notify_popup,
     notify_sound,
     resolve_project_title,
     run_notify_popup,
+    shorten_home,
 )
 
 from .common.hook_log import is_log_enabled, resolve_bool_flag
@@ -57,6 +69,8 @@ SCRIPT_NAME = os.path.splitext(os.path.basename(__file__))[0]
 SOUND_FLAG = "--sound"
 POPUP_FLAG = "--popup"
 APP_NAME = "Claude Code"
+# macOS の通知ヘルパー（`notify-helper-mac claude` でビルドする .app の名前）
+MAC_HELPER_NAME = "ClaudeNotify"
 DEFAULT_SOUND_NAME = "alert.wav"
 DEFAULT_POPUP_TEXT = "Claude Codeの応答が完了しました"
 DEFAULT_POPUP_SECONDS = 300.0
@@ -100,8 +114,18 @@ def play_alert() -> dict:
     )
 
 
-def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
-    """ポップアップを別プロセスで出す（`STOP_ALERT_POPUP*` を解決して渡す）。"""
+def show_popup(
+    text: str | None = None,
+    seconds: float | None = None,
+    *,
+    session_id: str = "",
+    cwd: str = "",
+) -> dict:
+    """視覚通知を出す（`STOP_ALERT_POPUP*` を解決して渡す）。
+
+    Windows は別プロセスのポップアップ。macOS は通知センターで、`session_id` を
+    identifier にして同じセッションの通知を置き換え、サブタイトルに `cwd` を出す。
+    """
     message = text or os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or DEFAULT_POPUP_TEXT
     duration = (
         seconds
@@ -116,6 +140,9 @@ def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
         entry_script=Path(sys.argv[0]),
         popup_flag=POPUP_FLAG,
         enabled=resolve_bool_flag("STOP_ALERT_POPUP", True),
+        subtitle=shorten_home(cwd or os.getcwd()),
+        notification_id=session_id,
+        helper_app=mac_helper_app(MAC_HELPER_NAME),
     )
 
 
@@ -154,7 +181,9 @@ def main():
         finish(0, reason="stop_hook_active, skipped")
 
     sound_result = play_alert()
-    popup_result = show_popup()
+    popup_result = show_popup(
+        session_id=str(payload.get("session_id") or ""), cwd=str(payload.get("cwd") or "")
+    )
     finish(0, reason="played", sound=sound_result, popup=popup_result)
 
 

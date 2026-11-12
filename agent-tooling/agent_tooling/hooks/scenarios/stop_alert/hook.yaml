@@ -3,7 +3,7 @@
 # here: the installer builds them from the install location.
 # Claude Code only: the source is adapters/claude/stop_alert.py (sound/popup backends in agent_tooling/notify/).
 id: stop_alert
-description: 応答完了（Stop）時に Windows でアラート音と画面右下のポップアップ通知を出す
+description: 応答完了（Stop）時にアラート音と視覚通知を出す（Windows は画面右下のポップアップ、macOS は通知センター）
 distributable: true
 agents:
   claude:
