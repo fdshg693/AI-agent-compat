@@ -180,6 +180,37 @@ def test_antigravity_pre_tool_use_then_pre_invocation(tmp_path: Path):
     assert "ag-pkg" in msg
 
 
+def test_antigravity_path_arg_key_is_recorded(tmp_path: Path):
+    """Newer Antigravity tools (read_file/write_file/edit_file) pass `Path`."""
+    repo = make_repo(
+        tmp_path,
+        {"pkg/file.py": "x\n", "pkg/AGENTS.md": "ag-path\n"},
+    )
+    session = f"adapter-ag-path-{tmp_path.name}"
+    pre_code, pre_out = run_complete(
+        "antigravity",
+        {
+            "conversationId": session,
+            "workspacePaths": [str(repo)],
+            "toolCall": {"args": {"Path": str(repo / "pkg" / "file.py")}},
+        },
+    )
+    assert pre_code == 0
+    assert json.loads(pre_out) == {"decision": "allow"}
+
+    inv_code, inv_out = run_complete(
+        "antigravity",
+        {
+            "conversationId": session,
+            "workspacePaths": [str(repo)],
+            "invocationNum": 1,
+        },
+    )
+    assert inv_code == 0
+    msg = json.loads(inv_out)["injectSteps"][0]["ephemeralMessage"]
+    assert "ag-path" in msg
+
+
 def test_antigravity_pre_invocation_without_pending_is_empty(tmp_path: Path):
     repo = make_repo(tmp_path, {"pkg/file.py": "x\n"})
     code, stdout = run_complete(

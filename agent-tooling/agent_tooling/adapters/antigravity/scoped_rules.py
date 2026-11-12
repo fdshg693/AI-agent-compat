@@ -53,7 +53,7 @@ def _take_pending(session_id):
 def _pre_tool(event):
     args = (event.get("toolCall") or {}).get("args") or {}
     cwd = _cwd(event)
-    values = [args.get(key) for key in ("AbsolutePath", "TargetFile")]
+    values = [args.get(key) for key in ("AbsolutePath", "TargetFile", "Path")]
     command = args.get("CommandLine")
     if isinstance(command, str) and command:
         values.extend(extract_bash_paths(command, cwd))

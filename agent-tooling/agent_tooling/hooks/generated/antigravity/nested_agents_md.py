@@ -3,7 +3,7 @@
 
 Antigravity PreToolUse has a required decision field and no injection slot.
 This adapter always returns {"decision":"allow"} on PreToolUse (never deny /
-ask) and stashes AbsolutePath / TargetFile / CommandLine dirs under
+ask) and stashes AbsolutePath / TargetFile / Path / CommandLine dirs under
 conversationId. PreInvocation has no tool args; it drains that cache and
 injects injectSteps[].ephemeralMessage.
 
@@ -391,7 +391,7 @@ MAX_CONTEXT_BYTES = 16_000
 CACHE_NAME = "nested-agents-md-antigravity"
 PENDING_CACHE_NAME = "nested-agents-md-antigravity-pending"
 NESTED_CANDIDATE_NAMES = ("AGENTS.md",)
-PATH_ARG_KEYS = ("AbsolutePath", "TargetFile")
+PATH_ARG_KEYS = ("AbsolutePath", "TargetFile", "Path")
 
 
 def _cwd_from_event(event):
