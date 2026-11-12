@@ -333,6 +333,120 @@
       }
     },
     {
+      "id": "notify",
+      "description": "ユーザーの操作が要るとき（質問・プラン承認・許可・入力要求・応答完了）にセッション単位の通知を出し、応答したら消す（macOS の通知センター。stop_alert とは併用しない）",
+      "distributable": true,
+      "requiresTools": [],
+      "agents": {
+        "claude": {
+          "runner": "python",
+          "main": "notify.py",
+          "files": [
+            {
+              "path": "claude/notify.py",
+              "installPath": "notify.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "AskUserQuestion|ExitPlanMode",
+              "async": true
+            },
+            {
+              "event": "PermissionRequest",
+              "async": true
+            },
+            {
+              "event": "Notification",
+              "matcher": "elicitation_dialog|elicitation_url_dialog",
+              "async": true
+            },
+            {
+              "event": "Stop",
+              "async": true
+            },
+            {
+              "event": "UserPromptSubmit",
+              "async": true
+            },
+            {
+              "event": "PostToolUse",
+              "matcher": "AskUserQuestion|ExitPlanMode",
+              "async": true
+            },
+            {
+              "event": "SessionEnd",
+              "timeout": 3
+            }
+          ]
+        },
+        "codex": {
+          "runner": "python",
+          "main": "notify.py",
+          "files": [
+            {
+              "path": "codex/notify.py",
+              "installPath": "notify.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "^request_user_input$",
+              "async": true
+            },
+            {
+              "event": "PermissionRequest",
+              "async": true
+            },
+            {
+              "event": "Stop",
+              "async": true
+            },
+            {
+              "event": "UserPromptSubmit",
+              "async": true
+            },
+            {
+              "event": "PostToolUse",
+              "matcher": "^request_user_input$",
+              "async": true
+            },
+            {
+              "event": "Interrupt",
+              "timeout": 3
+            },
+            {
+              "event": "SessionEnd",
+              "timeout": 3
+            }
+          ]
+        },
+        "kilo": {
+          "runner": "python",
+          "main": "notify.ts",
+          "files": [
+            {
+              "path": "kilo/notify.py",
+              "installPath": "notify.py"
+            },
+            {
+              "path": "kilo/notify.ts",
+              "installPath": "notify.ts"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": []
+        }
+      }
+    },
+    {
       "id": "recommend_skills",
       "description": "プロンプト送信ごとに config の roots 配下の SKILL.md を aim_cli で関連度判定し、関連しそうなスキルを提示する",
       "distributable": false,
@@ -526,7 +640,7 @@
     },
     {
       "id": "stop_alert",
-      "description": "応答完了（Stop）時に Windows でアラート音と画面右下のポップアップ通知を出す",
+      "description": "応答完了（Stop）時にアラート音と視覚通知を出す（Windows は画面右下のポップアップ、macOS は通知センター）",
       "distributable": true,
       "requiresTools": [],
       "agents": {

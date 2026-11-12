@@ -44,6 +44,9 @@ def normalize_repo_relative_path(root, raw_path):
     """Return a repository-relative POSIX path, or raise for outside paths."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("path must be a non-empty string")
+    # Agents on Windows send backslash-separated paths; treat them the same on
+    # every OS (a literal backslash in a POSIX file name is not supported).
+    raw_path = raw_path.replace("\\", "/")
     root_abs = os.path.abspath(root)
     candidate = raw_path if os.path.isabs(raw_path) else os.path.join(root_abs, raw_path)
     candidate = os.path.abspath(os.path.normpath(candidate))

@@ -1,0 +1,50 @@
+# Hook definition read by build/build.py and aggregated into generated/catalog.json.
+# Keys are documented in ../../AGENTS.md ("hook.yaml"). Do not write command strings
+# here: the installer builds them from the install location.
+# One artifact per agent branches on the event name (adapters/<agent>/notify.py);
+# posting/removing/formatting lives in agent_tooling/notify/.
+id: notify
+description: ユーザーの操作が要るとき（質問・プラン承認・許可・入力要求・応答完了）にセッション単位の通知を出し、応答したら消す（macOS の通知センター。stop_alert とは併用しない）
+distributable: true
+agents:
+  claude:
+    registrations:
+      - event: PreToolUse
+        matcher: AskUserQuestion|ExitPlanMode
+        async: true
+      - event: PermissionRequest
+        async: true
+      - event: Notification
+        matcher: elicitation_dialog|elicitation_url_dialog
+        async: true
+      - event: Stop
+        async: true
+      - event: UserPromptSubmit
+        async: true
+      - event: PostToolUse
+        matcher: AskUserQuestion|ExitPlanMode
+        async: true
+      # SessionEnd は同期で予算が短い。アダプタ側もヘルパーを 2 秒で打ち切る
+      - event: SessionEnd
+        timeout: 3
+  codex:
+    registrations:
+      - event: PreToolUse
+        matcher: ^request_user_input$
+        async: true
+      - event: PermissionRequest
+        async: true
+      - event: Stop
+        async: true
+      - event: UserPromptSubmit
+        async: true
+      - event: PostToolUse
+        matcher: ^request_user_input$
+        async: true
+      # Interrupt・SessionEnd は同期で予算が短い。アダプタ側もヘルパーを 2 秒で打ち切る
+      - event: Interrupt
+        timeout: 3
+      - event: SessionEnd
+        timeout: 3
+  # Kilo は登録を持たない（.kilo/plugin/ への配置で有効）。TS sidecar がルートセッションを解決する
+  kilo: {}

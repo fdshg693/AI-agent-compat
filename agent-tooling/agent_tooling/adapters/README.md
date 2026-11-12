@@ -32,12 +32,27 @@ flattens every inlined module into one namespace. Paths follow
 `common/paths.py`: the hook's own `config/`, `.env`, `state/` and `logs/` sit
 next to the installed file (`hook_dir()`), and project content is resolved
 with `resolve_project_dir(payload)`.
+`stop_alert` takes its sound and popup backends from `agent_tooling/notify/`
+(per-OS dispatch: Windows popup, macOS Notification Center; no environment or
+`.env` reads); the adapter resolves `STOP_ALERT_*`, `.env`, `alert.wav` and the
+macOS helper `.app` location and passes the values in.
+
+The `notify` scenario (`adapters/<agent>/notify.py`, built to
+`hooks/generated/<agent>/notify.py`; Claude, Codex and Kilo, where Kilo
+also has a `notify.ts` sidecar) posts a per-session notification when the agent needs the user and
+removes it once the user responds. One artifact branches on the event name;
+the adapter decides which events post or remove and what the text says, while
+`agent_tooling/notify/` (`notify_post` / `notify_remove` / `format_title`)
+does the posting, removing and formatting. It overlaps `stop_alert` on
+Claude's Stop, so install only one of the two.
 
 `stop_alert` is the one Claude-only hook that also has a Kilo port:
 `adapters/kilo/stop_alert.ts` listens for `session.idle` (skipping subagent
 sessions that have a `parentID`) and spawns, without waiting,
-`adapters/kilo/stop_alert.py`, which reuses the Claude `common/` sound and
-popup helpers via absolute `agent_tooling.adapters.claude.common.*` imports.
+`adapters/kilo/stop_alert.py`, which uses the same `agent_tooling/notify/`
+sound and popup backends as the Claude hook (plus the Claude `common/` log and
+`.env` helpers via absolute `agent_tooling.adapters.claude.common.*` imports).
+It overlaps the Kilo adapter of `notify`, so install only one of the two.
 Both are built to `hooks/generated/kilo/stop_alert.*`.
 
 The build manifest owns this agent x scenario mapping. Existing AGENTS targets

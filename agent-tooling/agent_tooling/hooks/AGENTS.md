@@ -7,8 +7,9 @@
 ### 編集してよい場所
 
 - `core/` — ツール非依存のパス正規化・コマンド解析・glob照合
-- `scenarios/` — `nested_agents_md` / `scoped_rules` / `agent_sessions` の入力・探索契約と、配布・登録のメタデータ `hook.yaml`（Claude 専用フックは `hook.yaml` と seed だけ）
+- `scenarios/` — `nested_agents_md` / `scoped_rules` / `agent_sessions` / `notify` の入力・探索契約と、配布・登録のメタデータ `hook.yaml`（Claude 専用フックは `hook.yaml` と seed だけ）
 - `../adapters/` — エージェント差分（イベント、注入チャネル、サイズ上限）
+- `../notify/` — 端末種別ごとの通知（音・視覚通知）。アダプタから呼ぶ共通処理で、約束事は [../notify/AGENTS.md](../notify/AGENTS.md)
 - `build/` — 相対 import を 1 ファイルへインライン化するビルダー
 
 `generated/` は生成物。手編集しない。ソースまたは `.claude/rules/` を変えたら `just --justfile agent-compat/agent-tooling/justfile generate`（lefthook も同じ入力変更で再生成する）。`nested_agents_md` は `AGENTS.md` だけを読み、`scoped_rules` は `.claude/rules/**/*.md` だけを読む。入力を相互に fallback させない。`agent_sessions` はファイルを読まず、開始/終了/CWD変更を `core/sessions.py` のレジストリ（env `AGENT_SESSIONS_DIR`、既定はユーザー単位）へ適用するだけで、コンテキストを注入しない。
@@ -27,10 +28,11 @@
 - `scenarios/<id>/` には `hook.yaml`（`agents` は `claude` のみ）と seed テンプレートだけを置く。本体は `../adapters/claude/<id>.py`、共通処理は `../adapters/claude/common/`（旧 `_lib/`）。`ENTRIES` は `build.py` 末尾の Claude 専用フック一覧に id を足す
 - `common/` は関数 import（`from .common.runtime import init_hook_context`）で使う。`runtime.foo()` のようなモジュール名前空間アクセスはインライン化後に残らない
 - パスは `common/paths.py` に従う。フック自身の `config/<id>.yaml`・`.env`・`state/`・`logs/`・`alert.wav` は `hook_dir()`（配置されたファイルの隣。`.claude/hooks/` に置けば従来と同じ場所）、プロジェクト側（`.claude/tasks/`、スキルの roots）は `resolve_project_dir(payload)`（`CLAUDE_PROJECT_DIR` → stdin `cwd` → git top level → cwd）
-- 子プロセスで自分を再実行するもの（`stop_alert` のポップアップ）は `__file__` ではなく `sys.argv[0]` とエントリ側の argv 分岐（`--popup`）を使う。インライン先の `if __name__ == "__main__":` は消えるため
+- `stop_alert` の音・視覚通知の実装は `../notify/`（OS ごとのバックエンド。Windows はポップアップ、macOS は通知センター、それ以外は何もしない）。`stop_alert.py` は `STOP_ALERT_*`・`.env`・`alert.wav` の場所・通知ヘルパーの場所を解決して引数で渡すだけ。macOS で同じセッションの通知を置き換えるには `ClaudeNotify.app` のビルドが要る（[../notify/AGENTS.md](../notify/AGENTS.md)）
+- 子プロセスで自分を再実行するもの（`stop_alert` のポップアップ）は `__file__` ではなく `sys.argv[0]` とエントリ側の argv 分岐（`--popup`。`stop_alert.py` に置く）を使う。インライン先の `if __name__ == "__main__":` は消えるため
 - リポジトリ構造前提のもの（`recommend_skills` / `skill_usage_tracker` / `skill_enquete_stop`）は `distributable: false`。非stdlib依存は PEP 723（`skill_usage_tracker`）か `runner: uv-project` + `project_imports`（`recommend_skills`）で宣言する
 - テストは `../../tests/claude_hooks/`。振る舞いは生成物を一時 `<project>/.claude/hooks/` にコピーして stdin JSON で流す
-- `stop_alert` だけは Kilo 版もある（`hook.yaml` の `agents` が `claude` + `kilo`）。`../adapters/kilo/stop_alert.ts` が `session.idle`（`parentID` を持つサブエージェントのセッションは除く）で隣の `stop_alert.py` を待たずに spawn し、Python 側は `../adapters/claude/common/` の音・ポップアップ処理を `agent_tooling.adapters.claude.common.*` の絶対 import で再利用する。`alert.wav`・`.env`・`logs/` は `.kilo/plugin/` に置く
+- `stop_alert` だけは Kilo 版もある（`hook.yaml` の `agents` が `claude` + `kilo`）。`../adapters/kilo/stop_alert.ts` が `session.idle`（`parentID` を持つサブエージェントのセッションは除く）で隣の `stop_alert.py` を待たずに spawn し、Python 側は Claude 版と同じ `../notify/` の音・視覚通知を使い、ログ・`.env` は `../adapters/claude/common/` を `agent_tooling.adapters.claude.common.*` の絶対 import で再利用する。Kilo の `notify` と重なるので、どちらか一方だけ入れる。`alert.wav`・`.env`・`logs/` は `.kilo/plugin/` に置く
 
 ### `hook.yaml`
 
@@ -57,7 +59,7 @@ agents:
 
 - 配布ファイル（`files` / `main`）は書かない。`ENTRIES` の `output` と `copies` から決まる（Kilo の `main` は TS）。
 - `registrations` に `command` / `args` / `type` / `commandWindows` / `hooks` は書けない。コマンド文字列は配置先に依存するので installer が組み立てる。
-- 許可キー: claude `event matcher timeout statusMessage async`、codex `event matcher timeout statusMessage additionalContextLimit`、cursor・antigravity `event matcher timeout`。増やすときは `build.py` の `REGISTRATION_KEYS` を更新する。
+- 許可キー: claude `event matcher timeout statusMessage async`、codex `event matcher timeout statusMessage additionalContextLimit async`、cursor・antigravity `event matcher timeout`。増やすときは `build.py` の `REGISTRATION_KEYS` を更新する。
 
 ### 検証コマンド
 
@@ -92,7 +94,7 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 
 各ツール固有の注意（登録内容そのものは `hook.yaml` を見る）:
 
-- Codex: `nested_agents_md` と `scoped_rules` は `.codex/hooks.json` の同じ matcher に2 commandとして並ぶ。`additionalContextLimit` は hooks.json 側のキー
+- Codex: `nested_agents_md` と `scoped_rules` は `.codex/hooks.json` の同じ matcher に2 commandとして並ぶ。`additionalContextLimit` は hooks.json 側のキー。`.codex/hooks.json` の定義・並び順を変えたら（`notify` の追加・`hooks update` を含む）Codex の `/hooks` で信頼し直す（信頼状態は `config.toml` の `[hooks.state]`）
 - Claude Code: `permissionDecision` は返さない。`CwdChanged` は matcher 非対応なので `hook.yaml` に書かない
 - Cursor: `postToolUse` の matcher は `Shell|Read|Write|Grep|Delete`（Shell だけに落とさない）。command はプロジェクトルート相対
 - Antigravity: 同じスクリプトを `PreToolUse`（パス記録、必ず `decision: allow`）と `PreInvocation`（`injectSteps[].ephemeralMessage`）の両方に登録する
@@ -108,6 +110,16 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 - Antigravity: 初回 `PreInvocation`（`invocationNum==0`）を疑似開始、`Stop`（`fullyIdle`）を疑似終了、`PreToolUse`（`run_command` の `args.Cwd`）でCWD更新。PreToolUseは `{"decision":"allow"}`、Stop/PreInvocationは `{}`
 - Kilo: TS の `event` hook が `session.created` / `session.deleted` / `session.updated` を検知して `.py` を spawn（`pid_source: "host"`、`session.idle` は終了扱いしない）
 
+#### notify（ユーザーの操作が要るときの通知）
+
+`notify` は注入せず、ユーザーの操作が要るイベントでセッション単位の通知を出し、応答したイベントで消す。`agent_sessions` と同じく 1 artifact がペイロードのイベント名で分岐する。どのイベントで出す・消すか・文言はアダプタ、投稿・削除・整形は `../notify/`（`notify_post`／`notify_remove`／`format_title`）。通知の identifier はセッション ID で、同じセッションの通知は最新の 1 件だけ残る。
+
+- Claude: 出す＝`PreToolUse`（`AskUserQuestion`・`ExitPlanMode`）/ `PermissionRequest` / `Notification`（`elicitation_dialog|elicitation_url_dialog`）/ `Stop`、消す＝`UserPromptSubmit` / `PostToolUse`（同じ matcher）/ `SessionEnd`（同期。ヘルパーを 2 秒で打ち切る）。それ以外は `async: true`。**無出力**（`UserPromptSubmit` の stdout はコンテキストに入る）
+- Codex: 出す＝`PreToolUse`（`^request_user_input$`）/ `PermissionRequest` / `Stop`（`<proposed_plan>` を含めばプラン確認待ち）、消す＝`UserPromptSubmit` / `PostToolUse`（同じ matcher）/ `Interrupt`・`SessionEnd`（同期・`timeout: 3`。ヘルパーを 2 秒で打ち切る）。それ以外は `async: true`（codex の許可キーに `async` を足し、skill-tools の `catalog.py` も同じ変更で受け付ける）。**無出力で常に exit 0**（Codex は exit 2 を Stop・UserPromptSubmit・PreToolUse のブロックとして扱う）。ヘルパーは `CodexNotify.app`
+- Kilo: TS sidecar（`notify.ts`）が `event`（`session.status` の idle・`permission.*`・`question.*`・`session.deleted`）と `chat.message` を受け、セッション ID を `client.session.get` で親を辿ってルートセッションの ID・自身がルートか・ルートの作業ディレクトリに解決（キャッシュ）し、隣の `notify.py` に `{event, id, root, cwd, body, properties}` を渡す。全イベントを 1 本のキューで直列に処理し（`asked` → `replied` が入れ替わらないように）、ハンドラはキューを待たない。spawn は非同期（`spawnSync` で Kilo を止めない）。idle 以外の `session.status` は Python を起動しない。idle（ルートのみ）だけ `client.session.messages` で最後のアシスタント発言を本文にする。`session.deleted` は get できないので `info` から判定。出す＝idle（ルート）/ `permission.asked` / `question.asked`、消す＝`permission.replied`・`question.replied`・`question.rejected` / `chat.message`・`session.deleted`（ルートのみ。子の `chat.message` はサブエージェントの起動）。ヘルパーは `KiloNotify.app`
+- 対応は macOS だけ（`ClaudeNotify.app` 等のヘルパーが無いと、出すのは osascript になり、消すことはできない）。Windows などは何もしない
+- Claude の Stop は `stop_alert` と重なる。両方は入れない（Windows は `stop_alert`、macOS は `notify` を使う）
+
 レジストリの場所（`AGENT_SESSIONS_DIR`）と一覧コマンド `agent-sessions`（永続表示 `--watch` を含む）は [agent-compat/agent-tooling/README.md](../../README.md) の「Agent Sessions」を参照。
 
 ### テスト
@@ -118,4 +130,5 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 - generated の shebang の次がエントリ docstring であること、`from .` / `from agent_tooling.` / 非 stdlib import が残っていないこと（`test_generated_matches_builder_contract`。lefthook の `generate-check` と二重にしない）
 - `catalog.json` が `hook.yaml` と `ENTRIES` に一致し、参照ファイルが実在すること。`hook.yaml` の検証・seed コピー・PEP 723・インライナーの拒否条件は一時パッケージで固定する（`test_builder.py`）
 - 各アダプタの stdin JSON → 探索対象ディレクトリ / stdout キー（Codex `hookSpecificOutput.additionalContext`、Claude は `permissionDecision` 無し、Cursor `additional_context`、Antigravity は PreToolUse `decision: allow` のあと PreInvocation `injectSteps`、Kilo Python は `additionalContext`、Kilo TS は spawn と `args` 非書き換え）
+- `notify` はアダプタが import した `notify_post`／`notify_remove` を差し替え、イベントごとの「出す／消す／何もしない」と通知の内容を検証する。生成物の実行は通知を出さないイベントだけ（`test_notify_adapters.py`）
 - `agent_sessions` は `AGENT_SESSIONS_DIR` を一時ディレクトリへ差し替え、5ツール分の start/cwd/end でファイル作成・更新・削除と `pid_source` を検証する（`test_agent_session_adapters.py`。レジストリ本体は `test_sessions_registry.py`）

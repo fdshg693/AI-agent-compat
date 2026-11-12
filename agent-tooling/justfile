@@ -19,3 +19,15 @@ rules-check:
 # Unit tests for discovery, inliner, and adapter stdin/stdout
 test:
     uv run pytest "{{justfile_directory()}}/tests"
+
+# Build and register a macOS notification helper .app (agent: claude / codex / kilo)
+notify-helper-mac agent="claude" bundle_prefix="local.agent-tooling" dest=(env("HOME", "") / "Library/Application Support/agent-tooling/notify"):
+    #!/bin/sh
+    set -eu
+    case "{{agent}}" in
+        claude) name=ClaudeNotify ;;
+        codex) name=CodexNotify ;;
+        kilo) name=KiloNotify ;;
+        *) echo "unknown agent: {{agent}} (claude / codex / kilo)" >&2; exit 2 ;;
+    esac
+    "{{justfile_directory()}}/agent_tooling/notify/macos_helper/build.sh" "$name" "{{bundle_prefix}}.{{agent}}-notify" "{{dest}}"

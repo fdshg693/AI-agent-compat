@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Stop hook that plays an alert sound and shows a popup window when Claude
-finishes a turn.
+"""Stop hook that plays an alert sound and shows a visual notification when
+Claude finishes a turn.
 
-On Windows, plays `alert.wav` next to the installed hook if present (or the
-path in `STOP_ALERT_SOUND`); otherwise falls back to a system beep. Also
-spawns a detached, auto-closing tkinter popup (bottom-right, always-on-top)
-so a muted/misconfigured sound setup still surfaces a visible notification.
-The popup runs in a child process that re-executes this same file with
-`--popup`. Never blocks the stop (always exits 0). Honors `stop_hook_active`
-to avoid Stop-hook re-entry loops even though this hook does not block.
+- Windows: plays `alert.wav` next to the installed hook if present (or the
+  path in `STOP_ALERT_SOUND`); otherwise falls back to a system beep. Also
+  spawns a detached, auto-closing tkinter popup (bottom-right, always-on-top)
+  that runs in a child process re-executing this same file with `--popup`.
+- macOS: plays the same sound file (or a system sound) with `afplay` without
+  waiting, and posts a Notification Center notification (title = project,
+  subtitle = cwd). With the ClaudeNotify helper .app built
+  (`just --justfile agent-compat/agent-tooling/justfile notify-helper-mac`),
+  the notification is keyed by `session_id` so each session keeps only its
+  latest one; otherwise it falls back to `osascript`.
+- Other OSes: does nothing (`unsupported`).
+
+Never blocks the stop (always exits 0). Honors `stop_hook_active` to avoid
+Stop-hook re-entry loops even though this hook does not block.
 
 手動確認（配置済みファイルに対して実行する）:
 - `python stop_alert.py --sound` 音だけ鳴らして結果を表示する（0=成功、1=失敗）
@@ -160,123 +167,6 @@ def write_log(script_name, record):
         pass
 
 
-# --- inlined from adapters/claude/common/play_alert_sound.py ---
-DEFAULT_SOUND_NAME = "alert.wav"
-
-
-def resolve_sound_path() -> Path | None:
-    """再生対象の WAV パスを返す。無ければ None。"""
-    env_path = os.environ.get("STOP_ALERT_SOUND", "").strip()
-    if env_path:
-        candidate = Path(env_path)
-        if candidate.is_file():
-            return candidate
-
-    default = hook_dir() / DEFAULT_SOUND_NAME
-    if default.is_file():
-        return default
-    return None
-
-
-def _system_asterisk_sound_configured() -> bool:
-    """Windows の「Asterisk（情報）」システムサウンドが実際に割り当てられているか。
-
-    MessageBeep(MB_ICONASTERISK) は、サウンドスキームで Asterisk が「なし」に
-    設定されていると音が出ないのに呼び出しは成功してしまう（戻り値では判別不可）。
-    そこでレジストリ HKCU\\AppEvents\\Schemes\\Apps\\.Default\\SystemAsterisk\\.Current
-    の値を確認し、空文字列＝「未割り当て」とみなして Beep トーン生成へ逃がす。
-    キー不在（ユーザー設定未変更）はスキーム既定に頼るしかないので True 扱い。
-    """
-    try:
-        import winreg
-    except ImportError:  # 非 Windows 環境等
-        return True  # 判定不能なら従来どおり MessageBeep を試す
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"AppEvents\Schemes\Apps\.Default\SystemAsterisk\.Current",
-        ) as key:
-            value, _ = winreg.QueryValueEx(key, "")
-            return bool(value and value.strip())
-    except OSError:
-        return True
-
-
-def _play_beep_or_tone() -> dict:
-    """システムAsterisk音が割り当てられていれば MessageBeep、無ければ Beep トーン生成。
-
-    Beep(freq, dur) はシステムサウンド設定に依存せず PC のスピーカーから
-    直接トーンを鳴らすため、スキーム「なし」でも確実に音が出る。
-    MessageBeep が例外で失敗した場合も Beep トーンで逃がす。
-    """
-    import winsound
-
-    if _system_asterisk_sound_configured():
-        try:
-            winsound.MessageBeep(winsound.MB_ICONASTERISK)
-            return {"ok": True, "mode": "beep", "path": None}
-        except Exception as exc:
-            try:
-                winsound.Beep(880, 300)
-                return {
-                    "ok": True,
-                    "mode": "tone_fallback",
-                    "path": None,
-                    "detail": str(exc),
-                }
-            except Exception as tone_exc:
-                return {
-                    "ok": False,
-                    "mode": "beep_failed",
-                    "detail": f"{exc}; {tone_exc}",
-                }
-    # システムサウンド未割り当て: 直接トーン生成
-    try:
-        winsound.Beep(880, 300)
-        return {"ok": True, "mode": "tone", "path": None}
-    except Exception as exc:
-        return {"ok": False, "mode": "tone_failed", "detail": str(exc)}
-
-
-def _sound_enabled() -> bool:
-    return resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True)
-
-
-def play_alert() -> dict:
-    """アラート音を再生する。戻り値は結果の要約（ログ／テスト用）。
-
-    この関数は可能な限り例外を外に出さない。失敗してもフックを壊さない。
-    """
-    if sys.platform != "win32":
-        return {"ok": False, "mode": "unsupported", "detail": f"platform={sys.platform}"}
-
-    if not _sound_enabled():
-        return {"ok": False, "mode": "disabled"}
-
-    try:
-        import winsound
-    except ImportError as exc:
-        return {"ok": False, "mode": "import_error", "detail": str(exc)}
-
-    sound_path = resolve_sound_path()
-    if sound_path is not None:
-        try:
-            # SND_FILENAME: path を WAV として再生 / SND_SYNC: 再生完了まで待つ
-            # （プロセス終了で音が途切れるのを防ぐ）
-            winsound.PlaySound(
-                str(sound_path),
-                winsound.SND_FILENAME | winsound.SND_SYNC,
-            )
-            return {"ok": True, "mode": "file", "path": str(sound_path)}
-        except Exception as exc:
-            # ファイル破損等でもビープ/トーンへフォールバック
-            result = _play_beep_or_tone()
-            result = {**result, "path": str(sound_path), "detail": str(exc)}
-            return result
-
-    return _play_beep_or_tone()
-
-
 # --- inlined from adapters/claude/common/runtime.py ---
 def configure_utf8_stdio():
     """Force UTF-8 stdio.
@@ -352,56 +242,232 @@ def env_int(name, default):
         return default
 
 
-# --- inlined from adapters/claude/common/show_alert_popup.py ---
-POPUP_FLAG = "--popup"
-DEFAULT_POPUP_TEXT = "Claude Codeの応答が完了しました"
-DEFAULT_POPUP_SECONDS = 300.0
-UNKNOWN_PROJECT_TITLE = "unknown"
-DEFAULT_APP_NAME = "Claude Code"
+# --- inlined from notify/text.py ---
+# 本文の最大文字数。超えた分は「…」に置き換える（通知センターで読める長さに抑える）
+MAX_BODY_CHARS = 120
 
 
-def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
+def truncate_body(text: str, limit: int = MAX_BODY_CHARS) -> str:
+    """改行・連続する空白を 1 つの空白に潰し、`limit` 文字に切り詰める。"""
+    collapsed = " ".join(text.split())
+    if len(collapsed) > limit:
+        return collapsed[:limit] + "…"
+    return collapsed
+
+
+def shorten_home(path: str) -> str:
+    """ホームディレクトリ配下のパスを `~` 始まりにする（どのセッションか見分けるサブタイトル用）。"""
+    if not path:
+        return ""
+    home = os.path.expanduser("~")
+    if home and home != "~" and (path == home or path.startswith(home + os.sep)):
+        return "~" + path[len(home) :]
+    return path
+
+
+def format_title(label: str, cwd: str) -> str:
+    """`<label> [<cwd のフォルダ名>]`。どのプロジェクトの通知かをタイトルで見分ける。"""
+    name = os.path.basename(os.path.normpath(cwd)) if cwd else "."
+    return f"{label} [{name or cwd}]"
+
+
+# --- inlined from notify/macos.py ---
+# ヘルパー・osascript の上限（秒）。どちらも通常 0.2 秒未満で終わる
+_MAC_TIMEOUT_SECONDS = 6.0
+# ヘルパーの終了コード（macos_helper/main.swift と合わせる）
+_MAC_HELPER_EXIT_DENIED = 3
+# 音のファイルが無いときに鳴らすシステムサウンド
+_MAC_DEFAULT_SOUND = Path("/System/Library/Sounds/Glass.aiff")
+# ヘルパー .app の既定の置き場所（`just … notify-helper-mac` のビルド先と合わせる）
+_MAC_HELPER_DIR = Path("~/Library/Application Support/agent-tooling/notify")
+
+# AppleScript には argv で値を渡し、文字列埋め込みによるエスケープ漏れを避ける
+_MAC_OSASCRIPT = """on run argv
+	display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv) sound name (item 4 of argv)
+end run"""
+
+
+def _mac_helper_app(name: str) -> Path:
+    """ヘルパー `<name>.app` の既定のパス（存在するとは限らない）。"""
+    return _MAC_HELPER_DIR.expanduser() / f"{name}.app"
+
+
+def _mac_helper_bin(helper_app: Path | None) -> Path | None:
+    """`.app` の中の実行ファイル。バンドル外へコピーすると動かないので中を直接 exec する。"""
+    if helper_app is None:
+        return None
+    binary = Path(helper_app) / "Contents" / "MacOS" / Path(helper_app).stem
+    return binary if binary.is_file() else None
+
+
+def _mac_run_helper(helper_app: Path | None, args: list[str], timeout: float) -> dict:
+    binary = _mac_helper_bin(helper_app)
+    if binary is None:
+        return {"ok": False, "mode": "helper_missing", "detail": str(helper_app)}
     try:
-        return float(raw)
-    except ValueError:
-        return default
+        result = subprocess.run(
+            [str(binary), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "mode": "helper_timeout", "detail": f"{timeout}s"}
+    except OSError as exc:
+        return {"ok": False, "mode": "helper_error", "detail": str(exc)}
+    if result.returncode == 0:
+        return {"ok": True, "mode": "helper"}
+    mode = "helper_denied" if result.returncode == _MAC_HELPER_EXIT_DENIED else "helper_failed"
+    return {
+        "ok": False,
+        "mode": mode,
+        "detail": f"exit={result.returncode}: {result.stderr.strip()}",
+    }
 
 
-def _resolve_project_title() -> str:
-    """どのプロジェクトが発火したポップアップかを表すフォルダ名を解決する。
+def _mac_osascript(title: str, subtitle: str, body: str, sound: str) -> dict:
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", _MAC_OSASCRIPT, title, subtitle, body, sound],
+            capture_output=True,
+            text=True,
+            timeout=_MAC_TIMEOUT_SECONDS,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "mode": "osascript_failed", "detail": str(exc)}
+    if result.returncode != 0:
+        return {
+            "ok": False,
+            "mode": "osascript_failed",
+            "detail": f"exit={result.returncode}: {result.stderr.strip()}",
+        }
+    # osascript は通知が許可されていなくても 0 で終わるので、「出た」とは言い切れない
+    return {"ok": True, "mode": "osascript"}
 
-    複数フォルダ（複数のClaude Codeセッション）を同時に動かしていると、
-    タイトルが無いと通知がどのプロジェクトのものか判別できない。優先順位:
 
-    1. `CLAUDE_PROJECT_DIR` 環境変数 -- Claude Codeがフックプロセスに必ず
-       設定する。フックが発火したセッションのプロジェクトルートそのものなので、
-       これが最も正確。
-    2. `git rev-parse --show-toplevel` -- 手動実行など env 変数が無い場合の
-       Gitリポジトリルート。
-    3. このファイル（ビルド後は配置されたフック）の場所から上位ディレクトリを
-       辿り、`.claude` フォルダが見つかったらその親フォルダ名（envもgitも
-       使えない最後の砦）。
-    4. どれも失敗したら "unknown"。
+def _mac_post(
+    title: str,
+    subtitle: str,
+    body: str,
+    *,
+    sound: str = "",
+    notification_id: str = "",
+    helper_app: Path | None = None,
+) -> dict:
+    """通知を出す。`body` は呼び出し側で整形済みのものを渡す。"""
+    helper_result = None
+    if notification_id:
+        helper_result = _mac_run_helper(
+            helper_app,
+            [
+                "post",
+                "--id",
+                notification_id,
+                "--title",
+                title,
+                "--subtitle",
+                subtitle,
+                "--body",
+                body,
+                "--sound",
+                sound,
+            ],
+            _MAC_TIMEOUT_SECONDS,
+        )
+        if helper_result["ok"]:
+            return helper_result
+        if helper_result["mode"] == "helper_denied":
+            # ユーザーが通知を拒否している。osascript で出し直すと拒否を無視することになる
+            return helper_result
+    result = _mac_osascript(title, subtitle, body, sound)
+    if helper_result is not None:
+        result["helper"] = helper_result
+    return result
 
-    例外を外に出さない（失敗してもポップアップ自体は表示する）。
+
+def _mac_remove(
+    notification_id: str,
+    *,
+    helper_app: Path | None = None,
+    timeout: float = _MAC_TIMEOUT_SECONDS,
+) -> dict:
+    """`notification_id` の通知を消す。id が空・ヘルパーが無いなら何もしない。"""
+    if not notification_id:
+        return {"ok": False, "mode": "no_id"}
+    return _mac_run_helper(helper_app, ["remove", "--id", notification_id], timeout)
+
+
+def _mac_play_sound(sound_path: Path | None) -> dict:
+    """`sound_path`（無ければ既定のシステムサウンド）を afplay で鳴らす。待たずに戻る。"""
+    path = Path(sound_path) if sound_path is not None else _MAC_DEFAULT_SOUND
+    subprocess.Popen(
+        ["afplay", str(path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+    return {"ok": True, "mode": "afplay", "path": str(path)}
+
+
+def _mac_spawn_popup(
+    text: str,
+    seconds: float,
+    project: str,
+    entry_script: Path,
+    popup_flag: str,
+    *,
+    subtitle: str = "",
+    notification_id: str = "",
+    helper_app: Path | None = None,
+) -> dict:
+    """視覚通知を通知センターへ出す（子プロセスは使わない。`seconds` は通知センターに任せる）。
+
+    音は `notify_sound()` が別に鳴らすので、通知には音を付けない（二重に鳴らさない）。
     """
-    env_dir = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
-    if env_dir:
-        name = Path(env_dir).name
+    del seconds, entry_script, popup_flag  # Windows のポップアップ用
+    return _mac_post(
+        project,
+        subtitle,
+        truncate_body(text),
+        notification_id=notification_id,
+        helper_app=helper_app,
+    )
+
+
+# --- inlined from notify/project.py ---
+UNKNOWN_PROJECT_TITLE = "unknown"
+
+
+def resolve_project_title(
+    project_dir: str | None = None,
+    *,
+    anchor: Path | None = None,
+    marker: str | None = None,
+) -> str:
+    """プロジェクトのフォルダ名を返す。例外を外に出さない。優先順位:
+
+    1. `project_dir`（呼び出し側が渡す。Claude なら `CLAUDE_PROJECT_DIR`）
+    2. `git rev-parse --show-toplevel`
+    3. `anchor` から上位ディレクトリを辿り、`marker` フォルダを持つ最初のディレクトリ
+    4. どれも失敗したら "unknown"
+    """
+    if project_dir and project_dir.strip():
+        name = Path(project_dir.strip()).name
         if name:
             return name
 
     try:
-        git_creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
             timeout=3,
-            creationflags=git_creationflags,
+            creationflags=creationflags,
         )
         if result.returncode == 0:
             name = Path(result.stdout.strip()).name
@@ -410,93 +476,154 @@ def _resolve_project_title() -> str:
     except Exception:
         pass
 
-    try:
-        for ancestor in Path(__file__).resolve().parents:
-            if (ancestor / ".claude").is_dir():
-                return ancestor.name
-    except Exception:
-        pass
+    if anchor is not None and marker:
+        try:
+            for ancestor in Path(anchor).resolve().parents:
+                if (ancestor / marker).is_dir():
+                    return ancestor.name
+        except Exception:
+            pass
 
     return UNKNOWN_PROJECT_TITLE
 
 
-def show_popup(
-    text: str | None = None,
-    seconds: float | None = None,
-    project_title: str | None = None,
-    app_name: str = DEFAULT_APP_NAME,
-) -> dict:
-    """ポップアップをデタッチした別プロセスで表示する（呼び出し元をブロックしない）。
+# --- inlined from notify/windows.py ---
+def _win_asterisk_sound_configured() -> bool:
+    """Windows の「Asterisk（情報）」システムサウンドが実際に割り当てられているか。
 
-    `project_title` を渡せば `_resolve_project_title()` を使わない（Kilo のように
-    `CLAUDE_PROJECT_DIR` が無く、呼び出し元がセッションのディレクトリを知っている場合）。
-    `app_name` はタイトルバーの接頭辞（既定 "Claude Code"）。
-
-    この関数は可能な限り例外を外に出さない。失敗してもフックを壊さない。
+    MessageBeep(MB_ICONASTERISK) は、サウンドスキームで Asterisk が「なし」に
+    設定されていると音が出ないのに呼び出しは成功してしまう（戻り値では判別不可）。
+    そこでレジストリ HKCU\\AppEvents\\Schemes\\Apps\\.Default\\SystemAsterisk\\.Current
+    の値を確認し、空文字列＝「未割り当て」とみなして Beep トーン生成へ逃がす。
+    キー不在（ユーザー設定未変更）はスキーム既定に頼るしかないので True 扱い。
     """
-    if sys.platform != "win32":
-        return {"ok": False, "mode": "unsupported", "detail": f"platform={sys.platform}"}
-
-    if not resolve_bool_flag("STOP_ALERT_POPUP", True):
-        return {"ok": False, "mode": "disabled"}
-
-    message = text or os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or DEFAULT_POPUP_TEXT
-    duration = (
-        seconds
-        if seconds is not None
-        else _env_float("STOP_ALERT_POPUP_SECONDS", DEFAULT_POPUP_SECONDS)
-    )
-    project_title = project_title or _resolve_project_title()
-
     try:
-        # CREATE_NO_WINDOW: コンソールウィンドウを一切作らない。DETACHED_PROCESS
-        # だけだと、Windows 11の既定ターミナル機構が新規コンソール要求を検知して
-        # 新しいWindows Terminal（PowerShell）ウィンドウを前面に出してしまうため、
-        # DETACHED_PROCESSではなくこちらを使う。
-        # CREATE_NEW_PROCESS_GROUP: Ctrl+C 等のシグナルを親から引き継がない
-        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-        subprocess.Popen(
-            [
-                sys.executable,
-                str(Path(sys.argv[0]).resolve()),
-                POPUP_FLAG,
-                message,
-                str(duration),
-                project_title,
-                app_name,
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=creationflags,
-            close_fds=True,
-        )
-        return {
-            "ok": True,
-            "mode": "spawned",
-            "text": message,
-            "seconds": duration,
-            "project": project_title,
-        }
+        import winreg
+    except ImportError:  # 非 Windows 環境等
+        return True  # 判定不能なら従来どおり MessageBeep を試す
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"AppEvents\Schemes\Apps\.Default\SystemAsterisk\.Current",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "")
+            return bool(value and value.strip())
+    except OSError:
+        return True
+
+
+def _win_play_beep_or_tone() -> dict:
+    """システムAsterisk音が割り当てられていれば MessageBeep、無ければ Beep トーン生成。
+
+    Beep(freq, dur) はシステムサウンド設定に依存せず PC のスピーカーから
+    直接トーンを鳴らすため、スキーム「なし」でも確実に音が出る。
+    MessageBeep が例外で失敗した場合も Beep トーンで逃がす。
+    """
+    import winsound
+
+    if _win_asterisk_sound_configured():
+        try:
+            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            return {"ok": True, "mode": "beep", "path": None}
+        except Exception as exc:
+            try:
+                winsound.Beep(880, 300)
+                return {
+                    "ok": True,
+                    "mode": "tone_fallback",
+                    "path": None,
+                    "detail": str(exc),
+                }
+            except Exception as tone_exc:
+                return {
+                    "ok": False,
+                    "mode": "beep_failed",
+                    "detail": f"{exc}; {tone_exc}",
+                }
+    # システムサウンド未割り当て: 直接トーン生成
+    try:
+        winsound.Beep(880, 300)
+        return {"ok": True, "mode": "tone", "path": None}
     except Exception as exc:
-        return {"ok": False, "mode": "spawn_failed", "detail": str(exc)}
+        return {"ok": False, "mode": "tone_failed", "detail": str(exc)}
 
 
-def run_popup_window(argv: list[str]) -> None:
-    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project, app]`（省略可）。"""
-    text = argv[0] if len(argv) > 0 else DEFAULT_POPUP_TEXT
-    seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
-    project_title = argv[2] if len(argv) > 2 else _resolve_project_title()
-    app_name = argv[3] if len(argv) > 3 else DEFAULT_APP_NAME
-    _run_window(text, seconds, project_title, app_name)
+def _win_play_sound(sound_path: Path | None) -> dict:
+    """`sound_path`（WAV のみ）を再生し、無い・失敗したらビープ／トーンへ逃がす。"""
+    try:
+        import winsound
+    except ImportError as exc:
+        return {"ok": False, "mode": "import_error", "detail": str(exc)}
+
+    if sound_path is not None:
+        try:
+            # SND_FILENAME: path を WAV として再生 / SND_SYNC: 再生完了まで待つ
+            # （プロセス終了で音が途切れるのを防ぐ）
+            winsound.PlaySound(
+                str(sound_path),
+                winsound.SND_FILENAME | winsound.SND_SYNC,
+            )
+            return {"ok": True, "mode": "file", "path": str(sound_path)}
+        except Exception as exc:
+            # ファイル破損等でもビープ/トーンへフォールバック
+            result = _win_play_beep_or_tone()
+            return {**result, "path": str(sound_path), "detail": str(exc)}
+
+    return _win_play_beep_or_tone()
 
 
-def _run_window(text: str, seconds: float, project_title: str, app_name: str) -> None:
-    """実際にポップアップを描画する。"""
+def _win_spawn_popup(
+    text: str,
+    seconds: float,
+    project: str,
+    entry_script: Path,
+    popup_flag: str,
+    **_mac_only: object,
+) -> dict:
+    """ポップアップを描く子プロセスをデタッチして起動し、すぐ戻る。
+
+    `_mac_only`（`subtitle`・`notification_id`・`helper_app`）は macOS 用で、ここでは使わない。
+
+    tkinter の mainloop は自プロセスをブロックするため、フック本体の応答を待たせない
+    よう別プロセスにする。インライン化後はこのモジュールのファイルが配置先に無いので、
+    `__file__` ではなく呼び出し元のエントリ（`entry_script`）を再実行する。
+    """
+    # CREATE_NO_WINDOW: コンソールウィンドウを一切作らない。DETACHED_PROCESS
+    # だけだと、Windows 11の既定ターミナル機構が新規コンソール要求を検知して
+    # 新しいWindows Terminal（PowerShell）ウィンドウを前面に出してしまうため、
+    # DETACHED_PROCESSではなくこちらを使う。
+    # CREATE_NEW_PROCESS_GROUP: Ctrl+C 等のシグナルを親から引き継がない
+    creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(entry_script).resolve()),
+            popup_flag,
+            text,
+            str(seconds),
+            project,
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags,
+        close_fds=True,
+    )
+    return {
+        "ok": True,
+        "mode": "spawned",
+        "text": text,
+        "seconds": seconds,
+        "project": project,
+    }
+
+
+def _win_run_popup(text: str, seconds: float, project: str, app_name: str) -> None:
+    """画面右下に最前面のポップアップを描く。クリックか時間切れで閉じる。"""
     import tkinter as tk
 
     root = tk.Tk()
-    root.title(f"{app_name} - {project_title}")
+    root.title(f"{app_name} - {project}")
     root.attributes("-topmost", True)
     try:
         root.attributes("-toolwindow", True)
@@ -508,7 +635,7 @@ def _run_window(text: str, seconds: float, project_title: str, app_name: str) ->
 
     tk.Label(
         frame,
-        text=project_title,
+        text=project,
         font=("Segoe UI", 10, "bold"),
         justify="left",
         anchor="w",
@@ -541,15 +668,163 @@ def _run_window(text: str, seconds: float, project_title: str, app_name: str) ->
     root.mainloop()
 
 
+# --- inlined from notify/__init__.py ---
+# OS ごとのバックエンド。OS を足すときはモジュールを足してここに 1 行ずつ足す。
+# `_SOUND_BACKENDS` と `_POPUP_SPAWNERS` の OS 集合は揃える。`_POPUP_WINDOWS` は
+# 視覚通知を子プロセスで描く OS（Windows）だけが持つ。
+_SOUND_BACKENDS = {"win32": _win_play_sound, "darwin": _mac_play_sound}
+_POPUP_SPAWNERS = {"win32": _win_spawn_popup, "darwin": _mac_spawn_popup}
+_POPUP_WINDOWS = {"win32": _win_run_popup}
+# identifier 付きで出す・消す（同じ id の通知を置き換え・削除できる）。後から消せる仕組みを
+# 持つ OS だけが持つ。Windows のポップアップは別プロセスで後から消せないので載せない。
+# `_POST_BACKENDS` と `_REMOVE_BACKENDS` の OS 集合は揃える。
+_POST_BACKENDS = {"darwin": _mac_post}
+_REMOVE_BACKENDS = {"darwin": _mac_remove}
+
+
+def _unsupported() -> dict:
+    return {"ok": False, "mode": "unsupported", "detail": f"platform={sys.platform}"}
+
+
+def notify_sound(sound_path: Path | None, *, enabled: bool = True) -> dict:
+    """通知音を鳴らす。`sound_path` は再生するファイル（無ければ OS の既定音）。
+
+    Windows は再生が終わるまで待つ（WAV のみ）。macOS は afplay を切り離して待たない。
+    """
+    backend = _SOUND_BACKENDS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    if not enabled:
+        return {"ok": False, "mode": "disabled"}
+    try:
+        return backend(sound_path)
+    except Exception as exc:
+        return {"ok": False, "mode": "error", "detail": str(exc)}
+
+
+def notify_popup(
+    text: str,
+    seconds: float,
+    project: str,
+    *,
+    entry_script: Path,
+    popup_flag: str,
+    enabled: bool = True,
+    subtitle: str = "",
+    notification_id: str = "",
+    helper_app: Path | None = None,
+) -> dict:
+    """視覚通知を出す（呼び出し元を長くブロックしない）。
+
+    - Windows: `entry_script`（実行中のフック。インライン化後は `sys.argv[0]`）を
+      `popup_flag text seconds project` 付きの別プロセスで再実行する。子プロセス側は
+      呼び出し元のエントリが argv を分岐して `run_notify_popup()` を呼ぶ。
+      `subtitle`・`notification_id`・`helper_app` は使わない
+    - macOS: 通知センターへ同期で出す（タイトル=`project`、サブタイトル=`subtitle`、
+      本文=`text` を整形したもの）。`notification_id` が同じ通知は置き換わる。
+      `helper_app` は通知ヘルパー `<Name>.app`（`mac_helper_app()`）。`seconds` は使わない
+    """
+    backend = _POPUP_SPAWNERS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    if not enabled:
+        return {"ok": False, "mode": "disabled"}
+    try:
+        return backend(
+            text,
+            seconds,
+            project,
+            entry_script,
+            popup_flag,
+            subtitle=subtitle,
+            notification_id=notification_id,
+            helper_app=helper_app,
+        )
+    except Exception as exc:
+        return {"ok": False, "mode": "spawn_failed", "detail": str(exc)}
+
+
+def run_notify_popup(text: str, seconds: float, project: str, app_name: str) -> None:
+    """`notify_popup()` が起動した子プロセスの本体。ウィンドウを閉じるまで戻らない。"""
+    backend = _POPUP_WINDOWS.get(sys.platform)
+    if backend is not None:
+        backend(text, seconds, project, app_name)
+
+
+def notify_post(
+    title: str,
+    subtitle: str,
+    body: str,
+    *,
+    sound: str = "",
+    notification_id: str = "",
+    helper_app: Path | None = None,
+) -> dict:
+    """identifier 付きの通知を出す（同期。上限付きで、呼び出し元を長くブロックしない）。
+
+    `body` はここで整形する（`truncate_body()`）。`notification_id` が同じ通知は
+    置き換わる（空なら置き換えの対象にしない）。`sound` は通知の音の名前（macOS は
+    `Glass`・`Hero` などのシステムサウンド名。空なら音なし）。`helper_app` は通知ヘルパー
+    `<Name>.app`（`mac_helper_app()`）。対応は macOS だけで、それ以外は `unsupported`。
+    """
+    backend = _POST_BACKENDS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    try:
+        return backend(
+            title,
+            subtitle,
+            truncate_body(body),
+            sound=sound,
+            notification_id=notification_id,
+            helper_app=helper_app,
+        )
+    except Exception as exc:
+        return {"ok": False, "mode": "error", "detail": str(exc)}
+
+
+def notify_remove(
+    notification_id: str,
+    *,
+    helper_app: Path | None = None,
+    timeout: float | None = None,
+) -> dict:
+    """`notification_id` の通知を消す。`timeout` 秒（省略時は既定の上限）で打ち切る。
+
+    id が空なら何もしない（`no_id`）。対応は macOS のヘルパー経由だけで、それ以外は
+    `unsupported`。ヘルパーが無いと消せない（`helper_missing`）。
+    """
+    backend = _REMOVE_BACKENDS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    try:
+        if timeout is None:
+            return backend(notification_id, helper_app=helper_app)
+        return backend(notification_id, helper_app=helper_app, timeout=timeout)
+    except Exception as exc:
+        return {"ok": False, "mode": "error", "detail": str(exc)}
+
+
+def mac_helper_app(name: str) -> Path:
+    """macOS の通知ヘルパー `<name>.app` の既定のパス（存在するとは限らない）。
+
+    ビルドは `just --justfile agent-compat/agent-tooling/justfile notify-helper-mac`。
+    """
+    return _mac_helper_app(name)
+
+
 # --- adapters/claude/stop_alert.py ---
 """
 環境変数（省略可）:
-- `STOP_ALERT_SOUND`         再生する WAV の絶対／相対パス。未設定なら
-                              配置先ディレクトリの `alert.wav` を探し、無ければシステムビープ。
+- `STOP_ALERT_SOUND`         再生する音ファイルの絶対／相対パス（Windows は WAV のみ）。未設定なら
+                              配置先ディレクトリの `alert.wav` を探し、無ければシステムの音
+                              （Windows はビープ、macOS は Glass）。
 - `STOP_ALERT_SOUND_ENABLED` 音そのものを鳴らすかどうか（true/false等）。未設定なら true。
                               false にするとポップアップ通知のみになる。
 - `STOP_ALERT_POPUP`         ポップアップ通知を出すかどうか（true/false等）。未設定なら true。
+                              macOS では通知センターへの通知を出すかどうか。
 - `STOP_ALERT_POPUP_SECONDS` ポップアップが自動で閉じるまでの秒数。未設定なら 300。
+                              macOS では使わない（表示時間は通知センターの設定に従う）。
 - `STOP_ALERT_POPUP_TEXT`    ポップアップに表示するメッセージ。未設定なら既定文言。
 - `HOOK_LOG`                  このフックの「デバッグログ」を配置先ディレクトリの`logs/stop_alert/`
                               に書き出すかどうか（true/false等）。フック自体の有効/無効ではない
@@ -568,6 +843,91 @@ SCRIPT_NAME = os.path.splitext(os.path.basename(__file__))[0]
 
 
 SOUND_FLAG = "--sound"
+POPUP_FLAG = "--popup"
+APP_NAME = "Claude Code"
+# macOS の通知ヘルパー（`notify-helper-mac claude` でビルドする .app の名前）
+MAC_HELPER_NAME = "ClaudeNotify"
+DEFAULT_SOUND_NAME = "alert.wav"
+DEFAULT_POPUP_TEXT = "Claude Codeの応答が完了しました"
+DEFAULT_POPUP_SECONDS = 300.0
+
+
+def resolve_sound_path() -> Path | None:
+    """再生する WAV: `STOP_ALERT_SOUND` → 配置先の `alert.wav` → 無ければ None（既定音）。"""
+    env_path = os.environ.get("STOP_ALERT_SOUND", "").strip()
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.is_file():
+            return candidate
+
+    default = hook_dir() / DEFAULT_SOUND_NAME
+    if default.is_file():
+        return default
+    return None
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _project_title() -> str:
+    """`CLAUDE_PROJECT_DIR` → git → この配置ファイルから上の `.claude` → "unknown"。"""
+    return resolve_project_title(
+        os.environ.get("CLAUDE_PROJECT_DIR"), anchor=Path(__file__), marker=".claude"
+    )
+
+
+def play_alert() -> dict:
+    """アラート音を鳴らす（`STOP_ALERT_SOUND_ENABLED`・`STOP_ALERT_SOUND` を解決して渡す）。"""
+    return notify_sound(
+        resolve_sound_path(), enabled=resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True)
+    )
+
+
+def show_popup(
+    text: str | None = None,
+    seconds: float | None = None,
+    *,
+    session_id: str = "",
+    cwd: str = "",
+) -> dict:
+    """視覚通知を出す（`STOP_ALERT_POPUP*` を解決して渡す）。
+
+    Windows は別プロセスのポップアップ。macOS は通知センターで、`session_id` を
+    identifier にして同じセッションの通知を置き換え、サブタイトルに `cwd` を出す。
+    """
+    message = text or os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or DEFAULT_POPUP_TEXT
+    duration = (
+        seconds
+        if seconds is not None
+        else _env_float("STOP_ALERT_POPUP_SECONDS", DEFAULT_POPUP_SECONDS)
+    )
+    return notify_popup(
+        message,
+        duration,
+        _project_title(),
+        # インライン化後は notify/ のファイルが無いので、実行中のこのフックを再実行させる
+        entry_script=Path(sys.argv[0]),
+        popup_flag=POPUP_FLAG,
+        enabled=resolve_bool_flag("STOP_ALERT_POPUP", True),
+        subtitle=shorten_home(cwd or os.getcwd()),
+        notification_id=session_id,
+        helper_app=mac_helper_app(MAC_HELPER_NAME),
+    )
+
+
+def run_popup_window(argv: list[str]) -> None:
+    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project]`（省略可）。"""
+    text = argv[0] if len(argv) > 0 else DEFAULT_POPUP_TEXT
+    seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
+    project = argv[2] if len(argv) > 2 else _project_title()
+    run_notify_popup(text, seconds, project, APP_NAME)
 
 
 def main():
@@ -597,7 +957,9 @@ def main():
         finish(0, reason="stop_hook_active, skipped")
 
     sound_result = play_alert()
-    popup_result = show_popup()
+    popup_result = show_popup(
+        session_id=str(payload.get("session_id") or ""), cwd=str(payload.get("cwd") or "")
+    )
     finish(0, reason="played", sound=sound_result, popup=popup_result)
 
 
