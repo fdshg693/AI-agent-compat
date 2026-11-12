@@ -252,4 +252,72 @@ def test_show_popup_respawns_running_hook_with_popup_flag(monkeypatch, clean_hoo
     (argv,) = spawned
     assert argv[0] == sys.executable
     assert Path(argv[1]) == Path("C:/hooks/stop_alert.py").resolve()
-    assert argv[2:] == [show_alert_popup.POPUP_FLAG, "hi", "5", "my-project"]
+    assert argv[2:] == [show_alert_popup.POPUP_FLAG, "hi", "5", "my-project", "Claude Code"]
+
+
+# ---------------------------------------------------------------------------
+# kilo:stop_alert (same helpers, spawned by the Kilo TS plugin on session.idle)
+# ---------------------------------------------------------------------------
+
+GENERATED_KILO = (
+    Path(__file__).resolve().parents[2] / "agent_tooling" / "hooks" / "generated" / "kilo"
+)
+
+
+def test_kilo_stop_alert_logs_and_exits_zero(tmp_path, clean_hook_env):
+    plugin_dir = tmp_path / ".kilo" / "plugin"
+    plugin_dir.mkdir(parents=True)
+    script = plugin_dir / "stop_alert.py"
+    script.write_bytes((GENERATED_KILO / "stop_alert.py").read_bytes())
+    env = {
+        **__import__("os").environ,
+        "HOOK_LOG": "true",
+        "STOP_ALERT_SOUND_ENABLED": "false",
+        "STOP_ALERT_POPUP": "false",
+    }
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input=json.dumps(
+            {"session_id": "s1", "cwd": str(tmp_path / "proj"), "event": "session.idle"}
+        ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=30,
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+    (log,) = (plugin_dir / "logs" / "stop_alert").glob("*.log")
+    record = json.loads(log.read_text(encoding="utf-8"))
+    assert record["reason"] == "played"
+    assert record["session_id"] == "s1"
+    assert record["sound"]["mode"] in {"disabled", "unsupported"}
+    assert record["popup"]["mode"] in {"disabled", "unsupported"}
+
+
+def test_show_popup_uses_given_project_and_app_name(monkeypatch, clean_hook_env):
+    spawned = []
+    monkeypatch.setattr(show_alert_popup.sys, "platform", "win32")
+    monkeypatch.setattr(show_alert_popup.sys, "argv", ["C:/kilo/plugin/stop_alert.py"])
+    monkeypatch.setattr(show_alert_popup.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(show_alert_popup.subprocess, "CREATE_NEW_PROCESS_GROUP", 0, raising=False)
+    monkeypatch.setattr(
+        show_alert_popup.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
+    )
+    result = show_alert_popup.show_popup(
+        text="done", seconds=5, project_title="proj", app_name="Kilo Code"
+    )
+    assert result["ok"] is True
+    (argv,) = spawned
+    assert argv[2:] == [show_alert_popup.POPUP_FLAG, "done", "5", "proj", "Kilo Code"]
+
+
+def test_kilo_stop_alert_ts_contract():
+    text = (GENERATED_KILO / "stop_alert.ts").read_text(encoding="utf-8")
+    assert "session.idle" in text
+    assert "parentID" in text
+    assert "stop_alert.py" in text
+    assert "spawnSync" not in text  # sound is synchronous in Python: do not block Kilo
+    assert "throw" not in text
+    assert "python3" in text

@@ -187,6 +187,12 @@ ENTRIES: tuple[Entry, ...] = (
         output="hooks/generated/kilo/agent_sessions.py",
         copies=(("adapters/kilo/agent_sessions.ts", "hooks/generated/kilo/agent_sessions.ts"),),
     ),
+    Entry(
+        name="kilo:stop_alert",
+        source="adapters/kilo/stop_alert.py",
+        output="hooks/generated/kilo/stop_alert.py",
+        copies=(("adapters/kilo/stop_alert.ts", "hooks/generated/kilo/stop_alert.ts"),),
+    ),
     *(
         Entry(
             name=f"claude:{hook_id}",
