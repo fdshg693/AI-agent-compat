@@ -160,123 +160,6 @@ def write_log(script_name, record):
         pass
 
 
-# --- inlined from adapters/claude/common/play_alert_sound.py ---
-DEFAULT_SOUND_NAME = "alert.wav"
-
-
-def resolve_sound_path() -> Path | None:
-    """再生対象の WAV パスを返す。無ければ None。"""
-    env_path = os.environ.get("STOP_ALERT_SOUND", "").strip()
-    if env_path:
-        candidate = Path(env_path)
-        if candidate.is_file():
-            return candidate
-
-    default = hook_dir() / DEFAULT_SOUND_NAME
-    if default.is_file():
-        return default
-    return None
-
-
-def _system_asterisk_sound_configured() -> bool:
-    """Windows の「Asterisk（情報）」システムサウンドが実際に割り当てられているか。
-
-    MessageBeep(MB_ICONASTERISK) は、サウンドスキームで Asterisk が「なし」に
-    設定されていると音が出ないのに呼び出しは成功してしまう（戻り値では判別不可）。
-    そこでレジストリ HKCU\\AppEvents\\Schemes\\Apps\\.Default\\SystemAsterisk\\.Current
-    の値を確認し、空文字列＝「未割り当て」とみなして Beep トーン生成へ逃がす。
-    キー不在（ユーザー設定未変更）はスキーム既定に頼るしかないので True 扱い。
-    """
-    try:
-        import winreg
-    except ImportError:  # 非 Windows 環境等
-        return True  # 判定不能なら従来どおり MessageBeep を試す
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"AppEvents\Schemes\Apps\.Default\SystemAsterisk\.Current",
-        ) as key:
-            value, _ = winreg.QueryValueEx(key, "")
-            return bool(value and value.strip())
-    except OSError:
-        return True
-
-
-def _play_beep_or_tone() -> dict:
-    """システムAsterisk音が割り当てられていれば MessageBeep、無ければ Beep トーン生成。
-
-    Beep(freq, dur) はシステムサウンド設定に依存せず PC のスピーカーから
-    直接トーンを鳴らすため、スキーム「なし」でも確実に音が出る。
-    MessageBeep が例外で失敗した場合も Beep トーンで逃がす。
-    """
-    import winsound
-
-    if _system_asterisk_sound_configured():
-        try:
-            winsound.MessageBeep(winsound.MB_ICONASTERISK)
-            return {"ok": True, "mode": "beep", "path": None}
-        except Exception as exc:
-            try:
-                winsound.Beep(880, 300)
-                return {
-                    "ok": True,
-                    "mode": "tone_fallback",
-                    "path": None,
-                    "detail": str(exc),
-                }
-            except Exception as tone_exc:
-                return {
-                    "ok": False,
-                    "mode": "beep_failed",
-                    "detail": f"{exc}; {tone_exc}",
-                }
-    # システムサウンド未割り当て: 直接トーン生成
-    try:
-        winsound.Beep(880, 300)
-        return {"ok": True, "mode": "tone", "path": None}
-    except Exception as exc:
-        return {"ok": False, "mode": "tone_failed", "detail": str(exc)}
-
-
-def _sound_enabled() -> bool:
-    return resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True)
-
-
-def play_alert() -> dict:
-    """アラート音を再生する。戻り値は結果の要約（ログ／テスト用）。
-
-    この関数は可能な限り例外を外に出さない。失敗してもフックを壊さない。
-    """
-    if sys.platform != "win32":
-        return {"ok": False, "mode": "unsupported", "detail": f"platform={sys.platform}"}
-
-    if not _sound_enabled():
-        return {"ok": False, "mode": "disabled"}
-
-    try:
-        import winsound
-    except ImportError as exc:
-        return {"ok": False, "mode": "import_error", "detail": str(exc)}
-
-    sound_path = resolve_sound_path()
-    if sound_path is not None:
-        try:
-            # SND_FILENAME: path を WAV として再生 / SND_SYNC: 再生完了まで待つ
-            # （プロセス終了で音が途切れるのを防ぐ）
-            winsound.PlaySound(
-                str(sound_path),
-                winsound.SND_FILENAME | winsound.SND_SYNC,
-            )
-            return {"ok": True, "mode": "file", "path": str(sound_path)}
-        except Exception as exc:
-            # ファイル破損等でもビープ/トーンへフォールバック
-            result = _play_beep_or_tone()
-            result = {**result, "path": str(sound_path), "detail": str(exc)}
-            return result
-
-    return _play_beep_or_tone()
-
-
 # --- inlined from adapters/claude/common/runtime.py ---
 def configure_utf8_stdio():
     """Force UTF-8 stdio.
@@ -352,55 +235,36 @@ def env_int(name, default):
         return default
 
 
-# --- inlined from adapters/claude/common/show_alert_popup.py ---
-POPUP_FLAG = "--popup"
-DEFAULT_POPUP_TEXT = "Claude Codeの応答が完了しました"
-DEFAULT_POPUP_SECONDS = 300.0
+# --- inlined from notify/project.py ---
 UNKNOWN_PROJECT_TITLE = "unknown"
 
 
-def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
+def resolve_project_title(
+    project_dir: str | None = None,
+    *,
+    anchor: Path | None = None,
+    marker: str | None = None,
+) -> str:
+    """プロジェクトのフォルダ名を返す。例外を外に出さない。優先順位:
 
-
-def _resolve_project_title() -> str:
-    """どのプロジェクトが発火したポップアップかを表すフォルダ名を解決する。
-
-    複数フォルダ（複数のClaude Codeセッション）を同時に動かしていると、
-    タイトルが無いと通知がどのプロジェクトのものか判別できない。優先順位:
-
-    1. `CLAUDE_PROJECT_DIR` 環境変数 -- Claude Codeがフックプロセスに必ず
-       設定する。フックが発火したセッションのプロジェクトルートそのものなので、
-       これが最も正確。
-    2. `git rev-parse --show-toplevel` -- 手動実行など env 変数が無い場合の
-       Gitリポジトリルート。
-    3. このファイル（ビルド後は配置されたフック）の場所から上位ディレクトリを
-       辿り、`.claude` フォルダが見つかったらその親フォルダ名（envもgitも
-       使えない最後の砦）。
-    4. どれも失敗したら "unknown"。
-
-    例外を外に出さない（失敗してもポップアップ自体は表示する）。
+    1. `project_dir`（呼び出し側が渡す。Claude なら `CLAUDE_PROJECT_DIR`）
+    2. `git rev-parse --show-toplevel`
+    3. `anchor` から上位ディレクトリを辿り、`marker` フォルダを持つ最初のディレクトリ
+    4. どれも失敗したら "unknown"
     """
-    env_dir = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
-    if env_dir:
-        name = Path(env_dir).name
+    if project_dir and project_dir.strip():
+        name = Path(project_dir.strip()).name
         if name:
             return name
 
     try:
-        git_creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
             timeout=3,
-            creationflags=git_creationflags,
+            creationflags=creationflags,
         )
         if result.returncode == 0:
             name = Path(result.stdout.strip()).name
@@ -409,82 +273,147 @@ def _resolve_project_title() -> str:
     except Exception:
         pass
 
-    try:
-        for ancestor in Path(__file__).resolve().parents:
-            if (ancestor / ".claude").is_dir():
-                return ancestor.name
-    except Exception:
-        pass
+    if anchor is not None and marker:
+        try:
+            for ancestor in Path(anchor).resolve().parents:
+                if (ancestor / marker).is_dir():
+                    return ancestor.name
+        except Exception:
+            pass
 
     return UNKNOWN_PROJECT_TITLE
 
 
-def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
-    """ポップアップをデタッチした別プロセスで表示する（呼び出し元をブロックしない）。
+# --- inlined from notify/windows.py ---
+def _win_asterisk_sound_configured() -> bool:
+    """Windows の「Asterisk（情報）」システムサウンドが実際に割り当てられているか。
 
-    この関数は可能な限り例外を外に出さない。失敗してもフックを壊さない。
+    MessageBeep(MB_ICONASTERISK) は、サウンドスキームで Asterisk が「なし」に
+    設定されていると音が出ないのに呼び出しは成功してしまう（戻り値では判別不可）。
+    そこでレジストリ HKCU\\AppEvents\\Schemes\\Apps\\.Default\\SystemAsterisk\\.Current
+    の値を確認し、空文字列＝「未割り当て」とみなして Beep トーン生成へ逃がす。
+    キー不在（ユーザー設定未変更）はスキーム既定に頼るしかないので True 扱い。
     """
-    if sys.platform != "win32":
-        return {"ok": False, "mode": "unsupported", "detail": f"platform={sys.platform}"}
-
-    if not resolve_bool_flag("STOP_ALERT_POPUP", True):
-        return {"ok": False, "mode": "disabled"}
-
-    message = text or os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or DEFAULT_POPUP_TEXT
-    duration = (
-        seconds
-        if seconds is not None
-        else _env_float("STOP_ALERT_POPUP_SECONDS", DEFAULT_POPUP_SECONDS)
-    )
-    project_title = _resolve_project_title()
-
     try:
-        # CREATE_NO_WINDOW: コンソールウィンドウを一切作らない。DETACHED_PROCESS
-        # だけだと、Windows 11の既定ターミナル機構が新規コンソール要求を検知して
-        # 新しいWindows Terminal（PowerShell）ウィンドウを前面に出してしまうため、
-        # DETACHED_PROCESSではなくこちらを使う。
-        # CREATE_NEW_PROCESS_GROUP: Ctrl+C 等のシグナルを親から引き継がない
-        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-        subprocess.Popen(
-            [
-                sys.executable,
-                str(Path(sys.argv[0]).resolve()),
-                POPUP_FLAG,
-                message,
-                str(duration),
-                project_title,
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=creationflags,
-            close_fds=True,
-        )
-        return {
-            "ok": True,
-            "mode": "spawned",
-            "text": message,
-            "seconds": duration,
-            "project": project_title,
-        }
+        import winreg
+    except ImportError:  # 非 Windows 環境等
+        return True  # 判定不能なら従来どおり MessageBeep を試す
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"AppEvents\Schemes\Apps\.Default\SystemAsterisk\.Current",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "")
+            return bool(value and value.strip())
+    except OSError:
+        return True
+
+
+def _win_play_beep_or_tone() -> dict:
+    """システムAsterisk音が割り当てられていれば MessageBeep、無ければ Beep トーン生成。
+
+    Beep(freq, dur) はシステムサウンド設定に依存せず PC のスピーカーから
+    直接トーンを鳴らすため、スキーム「なし」でも確実に音が出る。
+    MessageBeep が例外で失敗した場合も Beep トーンで逃がす。
+    """
+    import winsound
+
+    if _win_asterisk_sound_configured():
+        try:
+            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            return {"ok": True, "mode": "beep", "path": None}
+        except Exception as exc:
+            try:
+                winsound.Beep(880, 300)
+                return {
+                    "ok": True,
+                    "mode": "tone_fallback",
+                    "path": None,
+                    "detail": str(exc),
+                }
+            except Exception as tone_exc:
+                return {
+                    "ok": False,
+                    "mode": "beep_failed",
+                    "detail": f"{exc}; {tone_exc}",
+                }
+    # システムサウンド未割り当て: 直接トーン生成
+    try:
+        winsound.Beep(880, 300)
+        return {"ok": True, "mode": "tone", "path": None}
     except Exception as exc:
-        return {"ok": False, "mode": "spawn_failed", "detail": str(exc)}
+        return {"ok": False, "mode": "tone_failed", "detail": str(exc)}
 
 
-def run_popup_window(argv: list[str]) -> None:
-    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project]`（省略可）。"""
-    text = argv[0] if len(argv) > 0 else DEFAULT_POPUP_TEXT
-    seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
-    project_title = argv[2] if len(argv) > 2 else _resolve_project_title()
-    _run_window(text, seconds, project_title)
+def _win_play_sound(sound_path: Path | None) -> dict:
+    """`sound_path`（WAV のみ）を再生し、無い・失敗したらビープ／トーンへ逃がす。"""
+    try:
+        import winsound
+    except ImportError as exc:
+        return {"ok": False, "mode": "import_error", "detail": str(exc)}
+
+    if sound_path is not None:
+        try:
+            # SND_FILENAME: path を WAV として再生 / SND_SYNC: 再生完了まで待つ
+            # （プロセス終了で音が途切れるのを防ぐ）
+            winsound.PlaySound(
+                str(sound_path),
+                winsound.SND_FILENAME | winsound.SND_SYNC,
+            )
+            return {"ok": True, "mode": "file", "path": str(sound_path)}
+        except Exception as exc:
+            # ファイル破損等でもビープ/トーンへフォールバック
+            result = _win_play_beep_or_tone()
+            return {**result, "path": str(sound_path), "detail": str(exc)}
+
+    return _win_play_beep_or_tone()
 
 
-def _run_window(text: str, seconds: float, project_title: str) -> None:
-    """実際にポップアップを描画する。"""
+def _win_spawn_popup(
+    text: str, seconds: float, project: str, entry_script: Path, popup_flag: str
+) -> dict:
+    """ポップアップを描く子プロセスをデタッチして起動し、すぐ戻る。
+
+    tkinter の mainloop は自プロセスをブロックするため、フック本体の応答を待たせない
+    よう別プロセスにする。インライン化後はこのモジュールのファイルが配置先に無いので、
+    `__file__` ではなく呼び出し元のエントリ（`entry_script`）を再実行する。
+    """
+    # CREATE_NO_WINDOW: コンソールウィンドウを一切作らない。DETACHED_PROCESS
+    # だけだと、Windows 11の既定ターミナル機構が新規コンソール要求を検知して
+    # 新しいWindows Terminal（PowerShell）ウィンドウを前面に出してしまうため、
+    # DETACHED_PROCESSではなくこちらを使う。
+    # CREATE_NEW_PROCESS_GROUP: Ctrl+C 等のシグナルを親から引き継がない
+    creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(entry_script).resolve()),
+            popup_flag,
+            text,
+            str(seconds),
+            project,
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags,
+        close_fds=True,
+    )
+    return {
+        "ok": True,
+        "mode": "spawned",
+        "text": text,
+        "seconds": seconds,
+        "project": project,
+    }
+
+
+def _win_run_popup(text: str, seconds: float, project: str, app_name: str) -> None:
+    """画面右下に最前面のポップアップを描く。クリックか時間切れで閉じる。"""
     import tkinter as tk
 
     root = tk.Tk()
-    root.title(f"Claude Code - {project_title}")
+    root.title(f"{app_name} - {project}")
     root.attributes("-topmost", True)
     try:
         root.attributes("-toolwindow", True)
@@ -496,7 +425,7 @@ def _run_window(text: str, seconds: float, project_title: str) -> None:
 
     tk.Label(
         frame,
-        text=project_title,
+        text=project,
         font=("Segoe UI", 10, "bold"),
         justify="left",
         anchor="w",
@@ -529,6 +458,63 @@ def _run_window(text: str, seconds: float, project_title: str) -> None:
     root.mainloop()
 
 
+# --- inlined from notify/__init__.py ---
+# OS ごとのバックエンド。OS を足すときはモジュールを足してここに 1 行ずつ足す。
+_SOUND_BACKENDS = {"win32": _win_play_sound}
+_POPUP_SPAWNERS = {"win32": _win_spawn_popup}
+_POPUP_WINDOWS = {"win32": _win_run_popup}
+
+
+def _unsupported() -> dict:
+    return {"ok": False, "mode": "unsupported", "detail": f"platform={sys.platform}"}
+
+
+def notify_sound(sound_path: Path | None, *, enabled: bool = True) -> dict:
+    """通知音を鳴らす。`sound_path` は再生するファイル（無ければ OS の既定音）。"""
+    backend = _SOUND_BACKENDS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    if not enabled:
+        return {"ok": False, "mode": "disabled"}
+    try:
+        return backend(sound_path)
+    except Exception as exc:
+        return {"ok": False, "mode": "error", "detail": str(exc)}
+
+
+def notify_popup(
+    text: str,
+    seconds: float,
+    project: str,
+    *,
+    entry_script: Path,
+    popup_flag: str,
+    enabled: bool = True,
+) -> dict:
+    """視覚通知を出す（呼び出し元をブロックしない）。
+
+    Windows では `entry_script`（実行中のフック。インライン化後は `sys.argv[0]`）を
+    `popup_flag text seconds project` 付きの別プロセスで再実行する。子プロセス側は
+    呼び出し元のエントリが argv を分岐して `run_notify_popup()` を呼ぶ。
+    """
+    backend = _POPUP_SPAWNERS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    if not enabled:
+        return {"ok": False, "mode": "disabled"}
+    try:
+        return backend(text, seconds, project, entry_script, popup_flag)
+    except Exception as exc:
+        return {"ok": False, "mode": "spawn_failed", "detail": str(exc)}
+
+
+def run_notify_popup(text: str, seconds: float, project: str, app_name: str) -> None:
+    """`notify_popup()` が起動した子プロセスの本体。ウィンドウを閉じるまで戻らない。"""
+    backend = _POPUP_WINDOWS.get(sys.platform)
+    if backend is not None:
+        backend(text, seconds, project, app_name)
+
+
 # --- adapters/claude/stop_alert.py ---
 """
 環境変数（省略可）:
@@ -556,6 +542,76 @@ SCRIPT_NAME = os.path.splitext(os.path.basename(__file__))[0]
 
 
 SOUND_FLAG = "--sound"
+POPUP_FLAG = "--popup"
+APP_NAME = "Claude Code"
+DEFAULT_SOUND_NAME = "alert.wav"
+DEFAULT_POPUP_TEXT = "Claude Codeの応答が完了しました"
+DEFAULT_POPUP_SECONDS = 300.0
+
+
+def resolve_sound_path() -> Path | None:
+    """再生する WAV: `STOP_ALERT_SOUND` → 配置先の `alert.wav` → 無ければ None（既定音）。"""
+    env_path = os.environ.get("STOP_ALERT_SOUND", "").strip()
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.is_file():
+            return candidate
+
+    default = hook_dir() / DEFAULT_SOUND_NAME
+    if default.is_file():
+        return default
+    return None
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _project_title() -> str:
+    """`CLAUDE_PROJECT_DIR` → git → この配置ファイルから上の `.claude` → "unknown"。"""
+    return resolve_project_title(
+        os.environ.get("CLAUDE_PROJECT_DIR"), anchor=Path(__file__), marker=".claude"
+    )
+
+
+def play_alert() -> dict:
+    """アラート音を鳴らす（`STOP_ALERT_SOUND_ENABLED`・`STOP_ALERT_SOUND` を解決して渡す）。"""
+    return notify_sound(
+        resolve_sound_path(), enabled=resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True)
+    )
+
+
+def show_popup(text: str | None = None, seconds: float | None = None) -> dict:
+    """ポップアップを別プロセスで出す（`STOP_ALERT_POPUP*` を解決して渡す）。"""
+    message = text or os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or DEFAULT_POPUP_TEXT
+    duration = (
+        seconds
+        if seconds is not None
+        else _env_float("STOP_ALERT_POPUP_SECONDS", DEFAULT_POPUP_SECONDS)
+    )
+    return notify_popup(
+        message,
+        duration,
+        _project_title(),
+        # インライン化後は notify/ のファイルが無いので、実行中のこのフックを再実行させる
+        entry_script=Path(sys.argv[0]),
+        popup_flag=POPUP_FLAG,
+        enabled=resolve_bool_flag("STOP_ALERT_POPUP", True),
+    )
+
+
+def run_popup_window(argv: list[str]) -> None:
+    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project]`（省略可）。"""
+    text = argv[0] if len(argv) > 0 else DEFAULT_POPUP_TEXT
+    seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
+    project = argv[2] if len(argv) > 2 else _project_title()
+    run_notify_popup(text, seconds, project, APP_NAME)
 
 
 def main():

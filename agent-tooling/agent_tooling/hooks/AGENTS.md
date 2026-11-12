@@ -9,6 +9,7 @@
 - `core/` — ツール非依存のパス正規化・コマンド解析・glob照合
 - `scenarios/` — `nested_agents_md` / `scoped_rules` / `agent_sessions` の入力・探索契約と、配布・登録のメタデータ `hook.yaml`（Claude 専用フックは `hook.yaml` と seed だけ）
 - `../adapters/` — エージェント差分（イベント、注入チャネル、サイズ上限）
+- `../notify/` — 端末種別ごとの通知（音・視覚通知）。アダプタから呼ぶ共通処理で、約束事は [../notify/AGENTS.md](../notify/AGENTS.md)
 - `build/` — 相対 import を 1 ファイルへインライン化するビルダー
 
 `generated/` は生成物。手編集しない。ソースまたは `.claude/rules/` を変えたら `just --justfile agent-compat/agent-tooling/justfile generate`（lefthook も同じ入力変更で再生成する）。`nested_agents_md` は `AGENTS.md` だけを読み、`scoped_rules` は `.claude/rules/**/*.md` だけを読む。入力を相互に fallback させない。`agent_sessions` はファイルを読まず、開始/終了/CWD変更を `core/sessions.py` のレジストリ（env `AGENT_SESSIONS_DIR`、既定はユーザー単位）へ適用するだけで、コンテキストを注入しない。
@@ -27,7 +28,8 @@
 - `scenarios/<id>/` には `hook.yaml`（`agents` は `claude` のみ）と seed テンプレートだけを置く。本体は `../adapters/claude/<id>.py`、共通処理は `../adapters/claude/common/`（旧 `_lib/`）。`ENTRIES` は `build.py` 末尾の Claude 専用フック一覧に id を足す
 - `common/` は関数 import（`from .common.runtime import init_hook_context`）で使う。`runtime.foo()` のようなモジュール名前空間アクセスはインライン化後に残らない
 - パスは `common/paths.py` に従う。フック自身の `config/<id>.yaml`・`.env`・`state/`・`logs/`・`alert.wav` は `hook_dir()`（配置されたファイルの隣。`.claude/hooks/` に置けば従来と同じ場所）、プロジェクト側（`.claude/tasks/`、スキルの roots）は `resolve_project_dir(payload)`（`CLAUDE_PROJECT_DIR` → stdin `cwd` → git top level → cwd）
-- 子プロセスで自分を再実行するもの（`stop_alert` のポップアップ）は `__file__` ではなく `sys.argv[0]` とエントリ側の argv 分岐（`--popup`）を使う。インライン先の `if __name__ == "__main__":` は消えるため
+- `stop_alert` の音・ポップアップの実装は `../notify/`（OS ごとのバックエンド）。`stop_alert.py` は `STOP_ALERT_*`・`.env`・`alert.wav` の場所を解決して引数で渡すだけ
+- 子プロセスで自分を再実行するもの（`stop_alert` のポップアップ）は `__file__` ではなく `sys.argv[0]` とエントリ側の argv 分岐（`--popup`。`stop_alert.py` に置く）を使う。インライン先の `if __name__ == "__main__":` は消えるため
 - リポジトリ構造前提のもの（`recommend_skills` / `skill_usage_tracker` / `skill_enquete_stop`）は `distributable: false`。非stdlib依存は PEP 723（`skill_usage_tracker`）か `runner: uv-project` + `project_imports`（`recommend_skills`）で宣言する
 - テストは `../../tests/claude_hooks/`。振る舞いは生成物を一時 `<project>/.claude/hooks/` にコピーして stdin JSON で流す
 

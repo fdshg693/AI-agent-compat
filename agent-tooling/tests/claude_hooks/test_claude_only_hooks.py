@@ -9,7 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from agent_tooling.adapters.claude.common import paths, play_alert_sound, show_alert_popup
+from agent_tooling import notify
+from agent_tooling.adapters.claude import stop_alert
+from agent_tooling.adapters.claude.common import paths
+from agent_tooling.notify import windows as notify_windows
 from agent_tooling.adapters.claude.common.long_run_state import load_state, session_paths
 
 # ---------------------------------------------------------------------------
@@ -198,7 +201,7 @@ def test_aim_hooks_noop_without_aim(install_hook, tmp_path, hook_id, payload):
 
 
 # ---------------------------------------------------------------------------
-# stop_alert (+ common/play_alert_sound.py, common/show_alert_popup.py)
+# stop_alert (sound/popup backends: agent_tooling/notify/, see tests/test_notify.py)
 # ---------------------------------------------------------------------------
 
 
@@ -217,39 +220,50 @@ def test_stop_alert_does_nothing_when_disabled(install_hook):
     (log,) = (hook_.hooks_dir / "logs" / "stop_alert").glob("*.log")
     record = json.loads(log.read_text(encoding="utf-8"))
     assert record["reason"] == "played"
-    assert record["sound"]["mode"] in {"disabled", "unsupported"}
-    assert record["popup"]["mode"] in {"disabled", "unsupported"}
+    # 対応 OS では disabled、未対応 OS では unsupported（OS の判定が先）
+    expected = "disabled" if sys.platform in notify._SOUND_BACKENDS else "unsupported"
+    assert record["sound"]["mode"] == expected
+    expected = "disabled" if sys.platform in notify._POPUP_SPAWNERS else "unsupported"
+    assert record["popup"]["mode"] == expected
+
+
+def test_stop_alert_disabled_flags_win_over_supported_platform(monkeypatch, clean_hook_env):
+    monkeypatch.setattr(notify.sys, "platform", "win32")
+    monkeypatch.setenv("STOP_ALERT_SOUND_ENABLED", "false")
+    monkeypatch.setenv("STOP_ALERT_POPUP", "false")
+    assert stop_alert.play_alert() == {"ok": False, "mode": "disabled"}
+    assert stop_alert.show_popup() == {"ok": False, "mode": "disabled"}
 
 
 def test_resolve_sound_path_prefers_env_then_hook_dir(tmp_path, monkeypatch):
     wav = tmp_path / "custom.wav"
     wav.write_bytes(b"RIFF")
     monkeypatch.setenv("STOP_ALERT_SOUND", str(wav))
-    assert play_alert_sound.resolve_sound_path() == wav
+    assert stop_alert.resolve_sound_path() == wav
 
     monkeypatch.delenv("STOP_ALERT_SOUND")
-    monkeypatch.setattr(play_alert_sound, "hook_dir", lambda: tmp_path)
-    assert play_alert_sound.resolve_sound_path() is None
+    monkeypatch.setattr(stop_alert, "hook_dir", lambda: tmp_path)
+    assert stop_alert.resolve_sound_path() is None
     (tmp_path / "alert.wav").write_bytes(b"RIFF")
-    assert play_alert_sound.resolve_sound_path() == tmp_path / "alert.wav"
+    assert stop_alert.resolve_sound_path() == tmp_path / "alert.wav"
 
 
 def test_show_popup_respawns_running_hook_with_popup_flag(monkeypatch, clean_hook_env):
     """After inlining, show_popup's own module file no longer exists: it must
     re-run the entry script (sys.argv[0]) with --popup, not ``__file__``."""
     spawned = []
-    monkeypatch.setattr(show_alert_popup.sys, "platform", "win32")
-    monkeypatch.setattr(show_alert_popup.sys, "argv", ["C:/hooks/stop_alert.py"])
-    monkeypatch.setattr(show_alert_popup.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
-    monkeypatch.setattr(show_alert_popup.subprocess, "CREATE_NEW_PROCESS_GROUP", 0, raising=False)
+    monkeypatch.setattr(notify.sys, "platform", "win32")
+    monkeypatch.setattr(stop_alert.sys, "argv", ["C:/hooks/stop_alert.py"])
+    monkeypatch.setattr(notify_windows.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(notify_windows.subprocess, "CREATE_NEW_PROCESS_GROUP", 0, raising=False)
     monkeypatch.setattr(
-        show_alert_popup.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
+        notify_windows.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
     )
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/work/my-project")
 
-    result = show_alert_popup.show_popup(text="hi", seconds=5)
+    result = stop_alert.show_popup(text="hi", seconds=5)
     assert result["ok"] is True
     (argv,) = spawned
     assert argv[0] == sys.executable
     assert Path(argv[1]) == Path("C:/hooks/stop_alert.py").resolve()
-    assert argv[2:] == [show_alert_popup.POPUP_FLAG, "hi", "5", "my-project"]
+    assert argv[2:] == [stop_alert.POPUP_FLAG, "hi", "5", "my-project"]
