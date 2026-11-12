@@ -1,6 +1,6 @@
 ## `notify/` — 端末種別ごとの通知（音・視覚通知）
 
-各エージェントのアダプタ（現在は `../adapters/claude/stop_alert.py` と scenario `notify` の `../adapters/claude/notify.py`）から呼ぶ通知の共通処理。フック本体ではなく、ビルドでフックの成果物へインライン化される（`from agent_tooling.notify import …`）。
+各エージェントのアダプタ（現在は `../adapters/claude/stop_alert.py` と scenario `notify` の `../adapters/claude/notify.py`・`../adapters/codex/notify.py`・`../adapters/kilo/notify.py`）から呼ぶ通知の共通処理。フック本体ではなく、ビルドでフックの成果物へインライン化される（`from agent_tooling.notify import …`）。
 
 ### 責務の境界
 

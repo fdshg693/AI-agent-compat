@@ -63,7 +63,7 @@ def _write(path: Path, text: str) -> None:
 
 def test_entries_covers_complete_agents():
     names = {e.name for e in ENTRIES}
-    assert len(ENTRIES) == 28
+    assert len(ENTRIES) == 30
     assert names == {
         "codex:nested_agents_md",
         "claude:nested_agents_md",
@@ -78,6 +78,8 @@ def test_entries_covers_complete_agents():
         "claude:agent_sessions",
         "codex:agent_sessions",
         "claude:notify",
+        "codex:notify",
+        "kilo:notify",
         "cursor:agent_sessions",
         "antigravity:agent_sessions",
         "kilo:agent_sessions",

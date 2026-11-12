@@ -382,6 +382,67 @@
               "timeout": 3
             }
           ]
+        },
+        "codex": {
+          "runner": "python",
+          "main": "notify.py",
+          "files": [
+            {
+              "path": "codex/notify.py",
+              "installPath": "notify.py"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": [
+            {
+              "event": "PreToolUse",
+              "matcher": "^request_user_input$",
+              "async": true
+            },
+            {
+              "event": "PermissionRequest",
+              "async": true
+            },
+            {
+              "event": "Stop",
+              "async": true
+            },
+            {
+              "event": "UserPromptSubmit",
+              "async": true
+            },
+            {
+              "event": "PostToolUse",
+              "matcher": "^request_user_input$",
+              "async": true
+            },
+            {
+              "event": "Interrupt",
+              "timeout": 3
+            },
+            {
+              "event": "SessionEnd",
+              "timeout": 3
+            }
+          ]
+        },
+        "kilo": {
+          "runner": "python",
+          "main": "notify.ts",
+          "files": [
+            {
+              "path": "kilo/notify.py",
+              "installPath": "notify.py"
+            },
+            {
+              "path": "kilo/notify.ts",
+              "installPath": "notify.ts"
+            }
+          ],
+          "seedFiles": [],
+          "dependencies": [],
+          "registrations": []
         }
       }
     },

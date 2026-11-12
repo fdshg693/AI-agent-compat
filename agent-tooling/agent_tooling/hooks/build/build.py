@@ -45,7 +45,9 @@ SEED_KEYS = frozenset({"source", "path"})
 # installer builds them from where it placed the file.
 REGISTRATION_KEYS = {
     "claude": frozenset({"event", "matcher", "timeout", "statusMessage", "async"}),
-    "codex": frozenset({"event", "matcher", "timeout", "statusMessage", "additionalContextLimit"}),
+    "codex": frozenset(
+        {"event", "matcher", "timeout", "statusMessage", "additionalContextLimit", "async"}
+    ),
     "cursor": frozenset({"event", "matcher", "timeout"}),
     "antigravity": frozenset({"event", "matcher", "timeout"}),
     "kilo": frozenset(),
@@ -191,6 +193,17 @@ ENTRIES: tuple[Entry, ...] = (
         name="claude:notify",
         source="adapters/claude/notify.py",
         output="hooks/generated/claude/notify.py",
+    ),
+    Entry(
+        name="codex:notify",
+        source="adapters/codex/notify.py",
+        output="hooks/generated/codex/notify.py",
+    ),
+    Entry(
+        name="kilo:notify",
+        source="adapters/kilo/notify.py",
+        output="hooks/generated/kilo/notify.py",
+        copies=(("adapters/kilo/notify.ts", "hooks/generated/kilo/notify.ts"),),
     ),
     *(
         Entry(

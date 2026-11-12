@@ -58,7 +58,7 @@ agents:
 
 - 配布ファイル（`files` / `main`）は書かない。`ENTRIES` の `output` と `copies` から決まる（Kilo の `main` は TS）。
 - `registrations` に `command` / `args` / `type` / `commandWindows` / `hooks` は書けない。コマンド文字列は配置先に依存するので installer が組み立てる。
-- 許可キー: claude `event matcher timeout statusMessage async`、codex `event matcher timeout statusMessage additionalContextLimit`、cursor・antigravity `event matcher timeout`。増やすときは `build.py` の `REGISTRATION_KEYS` を更新する。
+- 許可キー: claude `event matcher timeout statusMessage async`、codex `event matcher timeout statusMessage additionalContextLimit async`、cursor・antigravity `event matcher timeout`。増やすときは `build.py` の `REGISTRATION_KEYS` を更新する。
 
 ### 検証コマンド
 
@@ -93,7 +93,7 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 
 各ツール固有の注意（登録内容そのものは `hook.yaml` を見る）:
 
-- Codex: `nested_agents_md` と `scoped_rules` は `.codex/hooks.json` の同じ matcher に2 commandとして並ぶ。`additionalContextLimit` は hooks.json 側のキー
+- Codex: `nested_agents_md` と `scoped_rules` は `.codex/hooks.json` の同じ matcher に2 commandとして並ぶ。`additionalContextLimit` は hooks.json 側のキー。`.codex/hooks.json` の定義・並び順を変えたら（`notify` の追加・`hooks update` を含む）Codex の `/hooks` で信頼し直す（信頼状態は `config.toml` の `[hooks.state]`）
 - Claude Code: `permissionDecision` は返さない。`CwdChanged` は matcher 非対応なので `hook.yaml` に書かない
 - Cursor: `postToolUse` の matcher は `Shell|Read|Write|Grep|Delete`（Shell だけに落とさない）。command はプロジェクトルート相対
 - Antigravity: 同じスクリプトを `PreToolUse`（パス記録、必ず `decision: allow`）と `PreInvocation`（`injectSteps[].ephemeralMessage`）の両方に登録する
@@ -114,6 +114,8 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 `notify` は注入せず、ユーザーの操作が要るイベントでセッション単位の通知を出し、応答したイベントで消す。`agent_sessions` と同じく 1 artifact がペイロードのイベント名で分岐する。どのイベントで出す・消すか・文言はアダプタ、投稿・削除・整形は `../notify/`（`notify_post`／`notify_remove`／`format_title`）。通知の identifier はセッション ID で、同じセッションの通知は最新の 1 件だけ残る。
 
 - Claude: 出す＝`PreToolUse`（`AskUserQuestion`・`ExitPlanMode`）/ `PermissionRequest` / `Notification`（`elicitation_dialog|elicitation_url_dialog`）/ `Stop`、消す＝`UserPromptSubmit` / `PostToolUse`（同じ matcher）/ `SessionEnd`（同期。ヘルパーを 2 秒で打ち切る）。それ以外は `async: true`。**無出力**（`UserPromptSubmit` の stdout はコンテキストに入る）
+- Codex: 出す＝`PreToolUse`（`^request_user_input$`）/ `PermissionRequest` / `Stop`（`<proposed_plan>` を含めばプラン確認待ち）、消す＝`UserPromptSubmit` / `PostToolUse`（同じ matcher）/ `Interrupt`・`SessionEnd`（同期・`timeout: 3`。ヘルパーを 2 秒で打ち切る）。それ以外は `async: true`（codex の許可キーに `async` を足し、skill-tools の `catalog.py` も同じ変更で受け付ける）。**無出力で常に exit 0**（Codex は exit 2 を Stop・UserPromptSubmit・PreToolUse のブロックとして扱う）。ヘルパーは `CodexNotify.app`
+- Kilo: TS sidecar（`notify.ts`）が `event`（`session.status` の idle・`permission.*`・`question.*`・`session.deleted`）と `chat.message` を受け、セッション ID を `client.session.get` で親を辿ってルートセッションの ID・自身がルートか・ルートの作業ディレクトリに解決（キャッシュ）し、隣の `notify.py` に `{event, id, root, cwd, body, properties}` を渡す。全イベントを 1 本のキューで直列に処理し（`asked` → `replied` が入れ替わらないように）、ハンドラはキューを待たない。spawn は非同期（`spawnSync` で Kilo を止めない）。idle 以外の `session.status` は Python を起動しない。idle（ルートのみ）だけ `client.session.messages` で最後のアシスタント発言を本文にする。`session.deleted` は get できないので `info` から判定。出す＝idle（ルート）/ `permission.asked` / `question.asked`、消す＝`permission.replied`・`question.replied`・`question.rejected` / `chat.message`・`session.deleted`（ルートのみ。子の `chat.message` はサブエージェントの起動）。ヘルパーは `KiloNotify.app`
 - 対応は macOS だけ（`ClaudeNotify.app` 等のヘルパーが無いと、出すのは osascript になり、消すことはできない）。Windows などは何もしない
 - Claude の Stop は `stop_alert` と重なる。両方は入れない（Windows は `stop_alert`、macOS は `notify` を使う）
 

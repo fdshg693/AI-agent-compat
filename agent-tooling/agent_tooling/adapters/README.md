@@ -38,8 +38,8 @@ with `resolve_project_dir(payload)`.
 macOS helper `.app` location and passes the values in.
 
 The `notify` scenario (`adapters/<agent>/notify.py`, built to
-`hooks/generated/<agent>/notify.py`; Claude only so far, Codex and Kilo come
-next) posts a per-session notification when the agent needs the user and
+`hooks/generated/<agent>/notify.py`; Claude, Codex and Kilo, where Kilo
+also has a `notify.ts` sidecar) posts a per-session notification when the agent needs the user and
 removes it once the user responds. One artifact branches on the event name;
 the adapter decides which events post or remove and what the text says, while
 `agent_tooling/notify/` (`notify_post` / `notify_remove` / `format_title`)

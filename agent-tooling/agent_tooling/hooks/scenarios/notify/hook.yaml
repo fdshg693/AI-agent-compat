@@ -27,3 +27,24 @@ agents:
       # SessionEnd は同期で予算が短い。アダプタ側もヘルパーを 2 秒で打ち切る
       - event: SessionEnd
         timeout: 3
+  codex:
+    registrations:
+      - event: PreToolUse
+        matcher: ^request_user_input$
+        async: true
+      - event: PermissionRequest
+        async: true
+      - event: Stop
+        async: true
+      - event: UserPromptSubmit
+        async: true
+      - event: PostToolUse
+        matcher: ^request_user_input$
+        async: true
+      # Interrupt・SessionEnd は同期で予算が短い。アダプタ側もヘルパーを 2 秒で打ち切る
+      - event: Interrupt
+        timeout: 3
+      - event: SessionEnd
+        timeout: 3
+  # Kilo は登録を持たない（.kilo/plugin/ への配置で有効）。TS sidecar がルートセッションを解決する
+  kilo: {}
