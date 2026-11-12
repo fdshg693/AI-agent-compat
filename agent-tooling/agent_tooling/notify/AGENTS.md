@@ -1,6 +1,6 @@
 ## `notify/` — 端末種別ごとの通知（音・視覚通知）
 
-各エージェントのアダプタ（現在は `../adapters/claude/stop_alert.py`）から呼ぶ通知の共通処理。フック本体ではなく、ビルドでフックの成果物へインライン化される（`from agent_tooling.notify import …`）。
+各エージェントのアダプタ（現在は `../adapters/claude/stop_alert.py` と scenario `notify` の `../adapters/claude/notify.py`）から呼ぶ通知の共通処理。フック本体ではなく、ビルドでフックの成果物へインライン化される（`from agent_tooling.notify import …`）。
 
 ### 責務の境界
 
@@ -12,12 +12,12 @@
 
 ### 構成
 
-- `__init__.py` — 公開 API（`notify_sound`・`notify_popup`・`run_notify_popup`・`resolve_project_title`・`truncate_body`・`shorten_home`・`mac_helper_app`）と、`sys.platform` → バックエンドの表
+- `__init__.py` — 公開 API（`notify_sound`・`notify_popup`・`run_notify_popup`・`notify_post`・`notify_remove`・`resolve_project_title`・`truncate_body`・`shorten_home`・`format_title`・`mac_helper_app`）と、`sys.platform` → バックエンドの表
 - `windows.py` — winsound／winreg の音と tkinter のポップアップ（子プロセスで描く）
 - `macos.py` — 通知センターへの通知（Swift ヘルパー → osascript）と afplay の音。identifier 付きの投稿・削除（`_mac_post`・`_mac_remove`）もここ
 - `macos_helper/` — 通知ヘルパーのソース（`main.swift`・`Info.plist.in`）と `build.sh`。Python ではないのでインライン化されない
 - `project.py` — 通知に出すプロジェクト名（引数 → git → `anchor` から上の `marker` → `unknown`）
-- `text.py` — 本文の整形（空白を潰して 120 文字に切り詰める）とホームの `~` 置き換え
+- `text.py` — 本文の整形（空白を潰して 120 文字に切り詰める）、ホームの `~` 置き換え、タイトル `<label> [<cwd のフォルダ名>]`（`format_title`）
 
 ### 対応 OS と仕組み
 
@@ -26,6 +26,15 @@
 | Windows（`win32`） | `sound_path` の WAV を winsound で同期再生。無い・失敗ならビープ／トーン    | `entry_script` を `popup_flag` 付きで再実行し、子プロセスが tkinter で描く。`seconds` で自動で閉じる       |
 | macOS（`darwin`）  | `sound_path`（無ければ `Glass.aiff`）を afplay で鳴らす。切り離して待たない | 通知センターへ同期で出す（上限 6 秒）。タイトル＝`project`、サブタイトル＝`subtitle`。`seconds` は使わない |
 | その他             | `unsupported`                                                               | `unsupported`                                                                                              |
+
+identifier 付きで出す・消す API（scenario `notify` が使う）:
+
+| API                                                                         | macOS                                                                                               | その他（Windows を含む） |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------ |
+| `notify_post(title, subtitle, body, *, sound, notification_id, helper_app)` | 下の順で出す。`body` はここで整形する。`sound` は通知の音の名前（`Glass`・`Hero` など。空なら無音） | `unsupported`            |
+| `notify_remove(notification_id, *, helper_app, timeout)`                    | ヘルパーの `remove --id`。ヘルパーが無いと消せない（`helper_missing`）。`timeout` 省略時は 6 秒     | `unsupported`            |
+
+Windows のポップアップは別プロセスで後から消せないので、この 2 つの表（`_POST_BACKENDS`・`_REMOVE_BACKENDS`）には載せない。両表の OS 集合は揃える（テストで検査）。`notify_popup` と違い有効/無効の引数は無い（フックを登録するかどうかで決める）
 
 macOS の通知は次の順に試す。
 

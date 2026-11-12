@@ -37,6 +37,15 @@ with `resolve_project_dir(payload)`.
 `.env` reads); the adapter resolves `STOP_ALERT_*`, `.env`, `alert.wav` and the
 macOS helper `.app` location and passes the values in.
 
+The `notify` scenario (`adapters/<agent>/notify.py`, built to
+`hooks/generated/<agent>/notify.py`; Claude only so far, Codex and Kilo come
+next) posts a per-session notification when the agent needs the user and
+removes it once the user responds. One artifact branches on the event name;
+the adapter decides which events post or remove and what the text says, while
+`agent_tooling/notify/` (`notify_post` / `notify_remove` / `format_title`)
+does the posting, removing and formatting. It overlaps `stop_alert` on
+Claude's Stop, so install only one of the two.
+
 The build manifest owns this agent x scenario mapping. Existing AGENTS targets
 remain independently buildable while Rule and session targets are added
 alongside them. Edit scenario and target sources first; the builder then

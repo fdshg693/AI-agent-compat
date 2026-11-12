@@ -72,6 +72,8 @@ def test_backend_exception_does_not_escape(monkeypatch):
 
 def test_backend_tables_cover_the_same_platforms():
     assert set(notify._SOUND_BACKENDS) == set(notify._POPUP_SPAWNERS) == {"win32", "darwin"}
+    # 後から消せるのは macOS のヘルパー経由だけ
+    assert set(notify._POST_BACKENDS) == set(notify._REMOVE_BACKENDS) == {"darwin"}
     # 子プロセスで描くのは Windows だけ
     assert set(notify._POPUP_WINDOWS) <= set(notify._POPUP_SPAWNERS)
 
@@ -356,6 +358,54 @@ def test_mac_spawn_popup_posts_without_sound(monkeypatch, helper_app):
     assert kwargs == {"notification_id": "sid", "helper_app": helper_app}
 
 
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_post_and_remove_unsupported_outside_macos(monkeypatch, platform):
+    monkeypatch.setattr(notify.sys, "platform", platform)
+    expected = {"ok": False, "mode": "unsupported", "detail": f"platform={platform}"}
+    assert notify.notify_post("T", "S", "B", notification_id="sid") == expected
+    assert notify.notify_remove("sid") == expected
+
+
+def test_notify_post_truncates_body_and_passes_sound(monkeypatch, fake_run, helper_app):
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    fake = fake_run()
+    result = notify.notify_post(
+        "T", "S", "a\n  b" + "x" * 200, sound="Hero", notification_id="sid", helper_app=helper_app
+    )
+    assert result == {"ok": True, "mode": "helper"}
+    argv = fake.calls[0]
+    body = argv[argv.index("--body") + 1]
+    assert body.startswith("a b") and body.endswith("…") and len(body) == 121
+    assert argv[argv.index("--sound") + 1] == "Hero"
+
+
+def test_notify_remove_passes_timeout(monkeypatch, helper_app):
+    seen = []
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    monkeypatch.setitem(
+        notify._REMOVE_BACKENDS,
+        "darwin",
+        lambda nid, **kwargs: seen.append((nid, kwargs)) or {"ok": True},
+    )
+    notify.notify_remove("sid", helper_app=helper_app)
+    notify.notify_remove("sid", helper_app=helper_app, timeout=2)
+    assert seen == [
+        ("sid", {"helper_app": helper_app}),
+        ("sid", {"helper_app": helper_app, "timeout": 2}),
+    ]
+
+
+def test_notify_post_and_remove_swallow_exceptions(monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    monkeypatch.setitem(notify._POST_BACKENDS, "darwin", boom)
+    monkeypatch.setitem(notify._REMOVE_BACKENDS, "darwin", boom)
+    assert notify.notify_post("T", "S", "B")["mode"] == "error"
+    assert notify.notify_remove("sid")["mode"] == "error"
+
+
 def test_mac_helper_app_default_location():
     app = notify.mac_helper_app("ClaudeNotify")
     assert app.name == "ClaudeNotify.app"
@@ -371,6 +421,19 @@ def test_truncate_body_collapses_whitespace_and_limits_length():
     assert notify.truncate_body("a\n  b\tc") == "a b c"
     assert notify.truncate_body("x" * 130) == "x" * 120 + "…"
     assert notify.truncate_body("x" * 120) == "x" * 120
+
+
+@pytest.mark.parametrize(
+    ("cwd", "expected"),
+    [
+        ("/Users/me/C/AI", "✅ 完了 [AI]"),
+        ("/Users/me/C/AI/", "✅ 完了 [AI]"),
+        ("/", "✅ 完了 [/]"),
+        ("", "✅ 完了 [.]"),
+    ],
+)
+def test_format_title(cwd, expected):
+    assert notify.format_title("✅ 完了", cwd) == expected
 
 
 def test_shorten_home(monkeypatch, tmp_path):

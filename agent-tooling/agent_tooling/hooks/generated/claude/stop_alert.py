@@ -265,6 +265,12 @@ def shorten_home(path: str) -> str:
     return path
 
 
+def format_title(label: str, cwd: str) -> str:
+    """`<label> [<cwd のフォルダ名>]`。どのプロジェクトの通知かをタイトルで見分ける。"""
+    name = os.path.basename(os.path.normpath(cwd)) if cwd else "."
+    return f"{label} [{name or cwd}]"
+
+
 # --- inlined from notify/macos.py ---
 # ヘルパー・osascript の上限（秒）。どちらも通常 0.2 秒未満で終わる
 _MAC_TIMEOUT_SECONDS = 6.0
@@ -669,6 +675,11 @@ def _win_run_popup(text: str, seconds: float, project: str, app_name: str) -> No
 _SOUND_BACKENDS = {"win32": _win_play_sound, "darwin": _mac_play_sound}
 _POPUP_SPAWNERS = {"win32": _win_spawn_popup, "darwin": _mac_spawn_popup}
 _POPUP_WINDOWS = {"win32": _win_run_popup}
+# identifier 付きで出す・消す（同じ id の通知を置き換え・削除できる）。後から消せる仕組みを
+# 持つ OS だけが持つ。Windows のポップアップは別プロセスで後から消せないので載せない。
+# `_POST_BACKENDS` と `_REMOVE_BACKENDS` の OS 集合は揃える。
+_POST_BACKENDS = {"darwin": _mac_post}
+_REMOVE_BACKENDS = {"darwin": _mac_remove}
 
 
 def _unsupported() -> dict:
@@ -738,6 +749,60 @@ def run_notify_popup(text: str, seconds: float, project: str, app_name: str) -> 
     backend = _POPUP_WINDOWS.get(sys.platform)
     if backend is not None:
         backend(text, seconds, project, app_name)
+
+
+def notify_post(
+    title: str,
+    subtitle: str,
+    body: str,
+    *,
+    sound: str = "",
+    notification_id: str = "",
+    helper_app: Path | None = None,
+) -> dict:
+    """identifier 付きの通知を出す（同期。上限付きで、呼び出し元を長くブロックしない）。
+
+    `body` はここで整形する（`truncate_body()`）。`notification_id` が同じ通知は
+    置き換わる（空なら置き換えの対象にしない）。`sound` は通知の音の名前（macOS は
+    `Glass`・`Hero` などのシステムサウンド名。空なら音なし）。`helper_app` は通知ヘルパー
+    `<Name>.app`（`mac_helper_app()`）。対応は macOS だけで、それ以外は `unsupported`。
+    """
+    backend = _POST_BACKENDS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    try:
+        return backend(
+            title,
+            subtitle,
+            truncate_body(body),
+            sound=sound,
+            notification_id=notification_id,
+            helper_app=helper_app,
+        )
+    except Exception as exc:
+        return {"ok": False, "mode": "error", "detail": str(exc)}
+
+
+def notify_remove(
+    notification_id: str,
+    *,
+    helper_app: Path | None = None,
+    timeout: float | None = None,
+) -> dict:
+    """`notification_id` の通知を消す。`timeout` 秒（省略時は既定の上限）で打ち切る。
+
+    id が空なら何もしない（`no_id`）。対応は macOS のヘルパー経由だけで、それ以外は
+    `unsupported`。ヘルパーが無いと消せない（`helper_missing`）。
+    """
+    backend = _REMOVE_BACKENDS.get(sys.platform)
+    if backend is None:
+        return _unsupported()
+    try:
+        if timeout is None:
+            return backend(notification_id, helper_app=helper_app)
+        return backend(notification_id, helper_app=helper_app, timeout=timeout)
+    except Exception as exc:
+        return {"ok": False, "mode": "error", "detail": str(exc)}
 
 
 def mac_helper_app(name: str) -> Path:

@@ -24,3 +24,9 @@ def shorten_home(path: str) -> str:
     if home and home != "~" and (path == home or path.startswith(home + os.sep)):
         return "~" + path[len(home) :]
     return path
+
+
+def format_title(label: str, cwd: str) -> str:
+    """`<label> [<cwd のフォルダ名>]`。どのプロジェクトの通知かをタイトルで見分ける。"""
+    name = os.path.basename(os.path.normpath(cwd)) if cwd else "."
+    return f"{label} [{name or cwd}]"

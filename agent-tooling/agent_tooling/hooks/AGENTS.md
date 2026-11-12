@@ -7,7 +7,7 @@
 ### 編集してよい場所
 
 - `core/` — ツール非依存のパス正規化・コマンド解析・glob照合
-- `scenarios/` — `nested_agents_md` / `scoped_rules` / `agent_sessions` の入力・探索契約と、配布・登録のメタデータ `hook.yaml`（Claude 専用フックは `hook.yaml` と seed だけ）
+- `scenarios/` — `nested_agents_md` / `scoped_rules` / `agent_sessions` / `notify` の入力・探索契約と、配布・登録のメタデータ `hook.yaml`（Claude 専用フックは `hook.yaml` と seed だけ）
 - `../adapters/` — エージェント差分（イベント、注入チャネル、サイズ上限）
 - `../notify/` — 端末種別ごとの通知（音・視覚通知）。アダプタから呼ぶ共通処理で、約束事は [../notify/AGENTS.md](../notify/AGENTS.md)
 - `build/` — 相対 import を 1 ファイルへインライン化するビルダー
@@ -109,6 +109,14 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 - Antigravity: 初回 `PreInvocation`（`invocationNum==0`）を疑似開始、`Stop`（`fullyIdle`）を疑似終了、`PreToolUse`（`run_command` の `args.Cwd`）でCWD更新。PreToolUseは `{"decision":"allow"}`、Stop/PreInvocationは `{}`
 - Kilo: TS の `event` hook が `session.created` / `session.deleted` / `session.updated` を検知して `.py` を spawn（`pid_source: "host"`、`session.idle` は終了扱いしない）
 
+#### notify（ユーザーの操作が要るときの通知）
+
+`notify` は注入せず、ユーザーの操作が要るイベントでセッション単位の通知を出し、応答したイベントで消す。`agent_sessions` と同じく 1 artifact がペイロードのイベント名で分岐する。どのイベントで出す・消すか・文言はアダプタ、投稿・削除・整形は `../notify/`（`notify_post`／`notify_remove`／`format_title`）。通知の identifier はセッション ID で、同じセッションの通知は最新の 1 件だけ残る。
+
+- Claude: 出す＝`PreToolUse`（`AskUserQuestion`・`ExitPlanMode`）/ `PermissionRequest` / `Notification`（`elicitation_dialog|elicitation_url_dialog`）/ `Stop`、消す＝`UserPromptSubmit` / `PostToolUse`（同じ matcher）/ `SessionEnd`（同期。ヘルパーを 2 秒で打ち切る）。それ以外は `async: true`。**無出力**（`UserPromptSubmit` の stdout はコンテキストに入る）
+- 対応は macOS だけ（`ClaudeNotify.app` 等のヘルパーが無いと、出すのは osascript になり、消すことはできない）。Windows などは何もしない
+- Claude の Stop は `stop_alert` と重なる。両方は入れない（Windows は `stop_alert`、macOS は `notify` を使う）
+
 レジストリの場所（`AGENT_SESSIONS_DIR`）と一覧コマンド `agent-sessions`（永続表示 `--watch` を含む）は [agent-compat/agent-tooling/README.md](../../README.md) の「Agent Sessions」を参照。
 
 ### テスト
@@ -119,4 +127,5 @@ lefthook もこのディレクトリの作業も、各ツールの hooks.json / 
 - generated の shebang の次がエントリ docstring であること、`from .` / `from agent_tooling.` / 非 stdlib import が残っていないこと（`test_generated_matches_builder_contract`。lefthook の `generate-check` と二重にしない）
 - `catalog.json` が `hook.yaml` と `ENTRIES` に一致し、参照ファイルが実在すること。`hook.yaml` の検証・seed コピー・PEP 723・インライナーの拒否条件は一時パッケージで固定する（`test_builder.py`）
 - 各アダプタの stdin JSON → 探索対象ディレクトリ / stdout キー（Codex `hookSpecificOutput.additionalContext`、Claude は `permissionDecision` 無し、Cursor `additional_context`、Antigravity は PreToolUse `decision: allow` のあと PreInvocation `injectSteps`、Kilo Python は `additionalContext`、Kilo TS は spawn と `args` 非書き換え）
+- `notify` はアダプタが import した `notify_post`／`notify_remove` を差し替え、イベントごとの「出す／消す／何もしない」と通知の内容を検証する。生成物の実行は通知を出さないイベントだけ（`test_notify_adapters.py`）
 - `agent_sessions` は `AGENT_SESSIONS_DIR` を一時ディレクトリへ差し替え、5ツール分の start/cwd/end でファイル作成・更新・削除と `pid_source` を検証する（`test_agent_session_adapters.py`。レジストリ本体は `test_sessions_registry.py`）
