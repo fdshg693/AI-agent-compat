@@ -287,3 +287,54 @@ def test_show_popup_on_macos_posts_keyed_by_session(monkeypatch, clean_hook_env,
     assert kwargs["subtitle"] == "~/w"
     assert kwargs["notification_id"] == "sid"
     assert kwargs["helper_app"].name == f"{stop_alert.MAC_HELPER_NAME}.app"
+
+
+# ---------------------------------------------------------------------------
+# kilo:stop_alert (same helpers, spawned by the Kilo TS plugin on session.idle)
+# ---------------------------------------------------------------------------
+
+GENERATED_KILO = (
+    Path(__file__).resolve().parents[2] / "agent_tooling" / "hooks" / "generated" / "kilo"
+)
+
+
+def test_kilo_stop_alert_logs_and_exits_zero(tmp_path, clean_hook_env):
+    plugin_dir = tmp_path / ".kilo" / "plugin"
+    plugin_dir.mkdir(parents=True)
+    script = plugin_dir / "stop_alert.py"
+    script.write_bytes((GENERATED_KILO / "stop_alert.py").read_bytes())
+    env = {
+        **__import__("os").environ,
+        "HOOK_LOG": "true",
+        "STOP_ALERT_SOUND_ENABLED": "false",
+        "STOP_ALERT_POPUP": "false",
+    }
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input=json.dumps(
+            {"session_id": "s1", "cwd": str(tmp_path / "proj"), "event": "session.idle"}
+        ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=30,
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+    (log,) = (plugin_dir / "logs" / "stop_alert").glob("*.log")
+    record = json.loads(log.read_text(encoding="utf-8"))
+    assert record["reason"] == "played"
+    assert record["session_id"] == "s1"
+    assert record["sound"]["mode"] in {"disabled", "unsupported"}
+    assert record["popup"]["mode"] in {"disabled", "unsupported"}
+
+
+def test_kilo_stop_alert_ts_contract():
+    text = (GENERATED_KILO / "stop_alert.ts").read_text(encoding="utf-8")
+    assert "session.idle" in text
+    assert "parentID" in text
+    assert "stop_alert.py" in text
+    assert "spawnSync" not in text  # sound is synchronous in Python: do not block Kilo
+    assert "throw" not in text
+    assert "python3" in text

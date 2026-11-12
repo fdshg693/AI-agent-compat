@@ -32,6 +32,7 @@
 - 子プロセスで自分を再実行するもの（`stop_alert` のポップアップ）は `__file__` ではなく `sys.argv[0]` とエントリ側の argv 分岐（`--popup`。`stop_alert.py` に置く）を使う。インライン先の `if __name__ == "__main__":` は消えるため
 - リポジトリ構造前提のもの（`recommend_skills` / `skill_usage_tracker` / `skill_enquete_stop`）は `distributable: false`。非stdlib依存は PEP 723（`skill_usage_tracker`）か `runner: uv-project` + `project_imports`（`recommend_skills`）で宣言する
 - テストは `../../tests/claude_hooks/`。振る舞いは生成物を一時 `<project>/.claude/hooks/` にコピーして stdin JSON で流す
+- `stop_alert` だけは Kilo 版もある（`hook.yaml` の `agents` が `claude` + `kilo`）。`../adapters/kilo/stop_alert.ts` が `session.idle`（`parentID` を持つサブエージェントのセッションは除く）で隣の `stop_alert.py` を待たずに spawn し、Python 側は Claude 版と同じ `../notify/` の音・視覚通知を使い、ログ・`.env` は `../adapters/claude/common/` を `agent_tooling.adapters.claude.common.*` の絶対 import で再利用する。Kilo の `notify` と重なるので、どちらか一方だけ入れる。`alert.wav`・`.env`・`logs/` は `.kilo/plugin/` に置く
 
 ### `hook.yaml`
 

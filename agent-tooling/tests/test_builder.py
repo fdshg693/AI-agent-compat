@@ -45,6 +45,8 @@ CLAUDE_ONLY_HOOKS = (
     "skill_usage_tracker",
     "skill_enquete_stop",
 )
+# Claude-only hooks that also got a Kilo port (adapters/kilo/<id>.py + .ts).
+KILO_PORTED_HOOKS = frozenset({"stop_alert"})
 
 
 def _load(name: str, path: Path):
@@ -63,7 +65,7 @@ def _write(path: Path, text: str) -> None:
 
 def test_entries_covers_complete_agents():
     names = {e.name for e in ENTRIES}
-    assert len(ENTRIES) == 30
+    assert len(ENTRIES) == 31
     assert names == {
         "codex:nested_agents_md",
         "claude:nested_agents_md",
@@ -83,6 +85,7 @@ def test_entries_covers_complete_agents():
         "cursor:agent_sessions",
         "antigravity:agent_sessions",
         "kilo:agent_sessions",
+        "kilo:stop_alert",
         *(f"claude:{hook_id}" for hook_id in CLAUDE_ONLY_HOOKS),
     }
     assert all(e.output.startswith("hooks/generated/") for e in ENTRIES)
@@ -265,7 +268,8 @@ def test_catalog_matches_hook_yaml_and_generated_files():
             assert record["registrations"], entry.name
     assert {"event": "CwdChanged"} in hooks["agent_sessions"]["agents"]["claude"]["registrations"]
     for hook_id in CLAUDE_ONLY_HOOKS:
-        assert set(hooks[hook_id]["agents"]) == {"claude"}, hook_id
+        expected = {"claude", "kilo"} if hook_id in KILO_PORTED_HOOKS else {"claude"}
+        assert set(hooks[hook_id]["agents"]) == expected, hook_id
     not_distributable = {h for h in CLAUDE_ONLY_HOOKS if not hooks[h]["distributable"]}
     assert not_distributable == {"recommend_skills", "skill_usage_tracker", "skill_enquete_stop"}
     assert hooks["skill_usage_tracker"]["agents"]["claude"]["dependencies"] == ["pyyaml"]

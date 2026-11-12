@@ -46,6 +46,15 @@ the adapter decides which events post or remove and what the text says, while
 does the posting, removing and formatting. It overlaps `stop_alert` on
 Claude's Stop, so install only one of the two.
 
+`stop_alert` is the one Claude-only hook that also has a Kilo port:
+`adapters/kilo/stop_alert.ts` listens for `session.idle` (skipping subagent
+sessions that have a `parentID`) and spawns, without waiting,
+`adapters/kilo/stop_alert.py`, which uses the same `agent_tooling/notify/`
+sound and popup backends as the Claude hook (plus the Claude `common/` log and
+`.env` helpers via absolute `agent_tooling.adapters.claude.common.*` imports).
+It overlaps the Kilo adapter of `notify`, so install only one of the two.
+Both are built to `hooks/generated/kilo/stop_alert.*`.
+
 The build manifest owns this agent x scenario mapping. Existing AGENTS targets
 remain independently buildable while Rule and session targets are added
 alongside them. Edit scenario and target sources first; the builder then
