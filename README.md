@@ -18,4 +18,4 @@
 | Cursor                        | 同じプラグインに `.cursor-plugin/plugin.json` を同梱する                                                                                                                          |
 | Cline・Kilo Code・Antigravity | ワークスペース直下からしか読まないので、`just agent-compat-sync` で gitignore 済みのコピー（`.cline/skills/`・`.kilo/skills/`・`_agents/plugins/antigravity-meta/`）を作る        |
 
-AGENTS.md から各ツールのルールを作るのは [tools/agents-rules](../tools/agents-rules/README.md)（手動実行）。
+AGENTS.md から各ツールのルールを作るのは [tools/coding-agent/agents-rules](../tools/coding-agent/agents-rules/README.md)（手動実行）。

@@ -12,7 +12,7 @@ Every time the user submits a prompt, this hook:
    those cannot be invoked via the Skill tool, which is why recommendations
    below are given as file paths to `Read`, not skill names to invoke).
 3. Sends the user's prompt plus the collected (name, description) pairs to
-   an AI model via `aim_cli` (tools/aim), imported as a library (not the
+   an AI model via `aim_cli` (tools/llm/aim), imported as a library (not the
    `aim` CLI subprocess) so batches can be judged concurrently with
    `asyncio.gather`. If there are more skills than one batch can reasonably
    hold, they are split into batches (default 30 skills each; see env vars
@@ -337,10 +337,10 @@ def find_skill_dir_by_name(name, roots):
 # --- adapters/claude/recommend_skills.py ---
 """
 以下を前提とする:
-- `tools/aim` がこのリポジトリの uv workspace メンバーであること（`pyproject.toml`
+- `tools/llm/aim` がこのリポジトリの uv workspace メンバーであること（`pyproject.toml`
   参照）。`uv run --project ${CLAUDE_PROJECT_DIR} ...` 経由であれば追加のインストール
   操作なしに `aim_cli` が import できる
-- OPENROUTER_API_KEY 環境変数（または `tools/aim/.env`）設定済み
+- OPENROUTER_API_KEY 環境変数（または `tools/llm/aim/.env`）設定済み
 - `config/recommend_skills.yaml` に少なくとも1つ有効な `roots` エントリ
   があること（無ければこのフックは何もしない）
 """

@@ -1,4 +1,4 @@
-"""Shared `aim` CLI (tools/aim, OpenRouter-backed) subprocess wrapper.
+"""Shared `aim` CLI (tools/llm/aim, OpenRouter-backed) subprocess wrapper.
 
 Consolidates the part of each hook's `call_aim()` that was byte-for-byte
 identical across `summarize_read.py`, `summarize_webfetch.py`, and

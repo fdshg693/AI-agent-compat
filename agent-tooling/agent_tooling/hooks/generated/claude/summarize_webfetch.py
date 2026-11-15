@@ -7,7 +7,7 @@ page through a small model internally, but the response can still be huge
 
 1. Saves the full, unmodified `result` text to a log file under
    `logs/webfetch_fulltext/` next to the installed hook.
-2. Sends that text to the `aim` CLI (tools/aim, OpenRouter-backed) for
+2. Sends that text to the `aim` CLI (tools/llm/aim, OpenRouter-backed) for
    a further summary.
 3. Replaces the tool result with the summary (plus the log file path) via
    `updatedToolOutput`, so the raw text never lands in the main
@@ -270,7 +270,7 @@ def env_int(name, default):
 # --- adapters/claude/summarize_webfetch.py ---
 """
 以下を前提とする:
-- `tools/aim` にある `aim CLI` インストール済
+- `tools/llm/aim` にある `aim CLI` インストール済
 - OPENROUTER_API_KEY 環境変数設定済
 """
 

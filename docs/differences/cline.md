@@ -35,7 +35,7 @@ Claude Code を基準に、Cline で書き方が変わる点だけを並べる�
 - 条件付きルールは frontmatter の `paths:`（glob の配列）。Claude Code の `.claude/rules/` の `paths:` と同じキー名。frontmatter なしは常時有効、`paths: []` は無効。
 - 判定に使う「今のファイル」は、メッセージ中のパス・開いているタブ・表示中のファイル・編集したファイル・これから編集するファイル。
 - `.cursorrules`・`.windsurfrules`・`AGENTS.md` もルールとして自動検出され、どれも UI で個別にトグルできる。
-- このリポジトリは `tools/agents-rules` で AGENTS.md から `.clinerules/agents-*.md` を作る（frontmatter は `paths:` 1 個）。
+- このリポジトリは `tools/coding-agent/agents-rules` で AGENTS.md から `.clinerules/agents-*.md` を作る（frontmatter は `paths:` 1 個）。
 - サンプル: [rule/src.example.md](../../formats/cline/rule/src.example.md)。根拠: [cline-rule-writer](../../../skills/plugins/ai-tools-knowledge/skills/cline-rule-writer/SKILL.md)、公式 `customization/cline-rules`。
 
 ## メモリファイル

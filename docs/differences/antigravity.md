@@ -33,9 +33,9 @@ Claude Code を基準に、Google Antigravity（IDE と `agy` CLI）で書き方
 
 - `.claude/rules/*.md`（`paths`）に当たるのは `.agents/rules/*.md`（旧 `.agent/rules/` も可）。
 - frontmatter の `trigger` は `always_on`・`glob`・`model_decision`・`manual` の4種。キー名は公式ドキュメントに無く、IDE で作ったルールから確かめたもの。
-- glob 対象のキー名は資料で食い違う。`tools/agents-rules` は IDE で作ったルールを見て `glob:` を出し、antigravity-memory は `globs:` と書いている（どちらが正しいか未確認）。glob は1行・カンマ区切り・250文字まで。
+- glob 対象のキー名は資料で食い違う。`tools/coding-agent/agents-rules` は IDE で作ったルールを見て `glob:` を出し、antigravity-memory は `globs:` と書いている（どちらが正しいか未確認）。glob は1行・カンマ区切り・250文字まで。
 - 1ファイル12,000文字まで。本文から `@filename` で他ファイルを参照できる。
-- サンプル: [rule/src.example.md](../../formats/antigravity/rule/src.example.md)（`tools/agents-rules` の出力と同じ形）。出典: [antigravity-memory](../../../skills/plugins/ai-tools-knowledge/skills/antigravity-memory/SKILL.md)。
+- サンプル: [rule/src.example.md](../../formats/antigravity/rule/src.example.md)（`tools/coding-agent/agents-rules` の出力と同じ形）。出典: [antigravity-memory](../../../skills/plugins/ai-tools-knowledge/skills/antigravity-memory/SKILL.md)。
 
 ## メモリファイル
 
