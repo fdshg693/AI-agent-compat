@@ -3,7 +3,7 @@
 
 Every time the user submits a prompt (this event fires once per turn,
 before Claude processes anything), this hook sends the raw prompt text to
-the `aim` CLI (tools/aim, OpenRouter-backed) and asks for an English
+the `aim` CLI (tools/llm/aim, OpenRouter-backed) and asks for an English
 translation. The translation is attached via `additionalContext` --
 UserPromptSubmit hooks cannot replace or rewrite the original prompt text
 itself, only add context alongside it (see Claude Code hooks reference).
@@ -272,7 +272,7 @@ def env_int(name, default):
 # --- adapters/claude/translate_prompt.py ---
 """
 以下を前提とする:
-- `tools/aim` にある `aim CLI` インストール済
+- `tools/llm/aim` にある `aim CLI` インストール済
 - OPENROUTER_API_KEY 環境変数設定済
 """
 

@@ -2,7 +2,7 @@
 """PostToolUse hook for the Read tool.
 
 When a Read call returns a large text excerpt, this hook sends the content
-to the `aim` CLI (tools/aim, OpenRouter-backed) for summarization and
+to the `aim` CLI (tools/llm/aim, OpenRouter-backed) for summarization and
 replaces the tool result with the summary via `updatedToolOutput`, so the
 raw text never lands in the main conversation context. The underlying file
 read has already happened by the time this hook runs (PostToolUse can't
@@ -17,7 +17,7 @@ This hook must never be the reason a Read call appears to fail.
 
 """
 以下を前提とする:
-- `tools/aim` にある `aim CLI` インストール済
+- `tools/llm/aim` にある `aim CLI` インストール済
 - OPENROUTER_API_KEY 環境変数設定済
 """
 

@@ -34,7 +34,7 @@ Claude Code を基準に、Cursor で書き方が変わる点だけを並べる�
 - `.claude/rules/*.md`（`paths`）の代わりに `.cursor/rules/**/*.mdc`。拡張子は `.mdc` 必須で、`.md` は無視される。
 - frontmatter は `alwaysApply`・`description`・`globs` の組み合わせで、常時／ファイル一致／Agent 判断／`@rule-name` 手動 の4通りになる。
 - ルールは Agent（Chat）だけに効く。Tab と Inline Edit（Ctrl+K）には効かない。
-- サンプル: [rule/rule.example.mdc](../../formats/cursor/rule/rule.example.mdc)（`tools/agents-rules` の出力と同じ形）。出典: [cursor-memory](../../../skills/plugins/ai-tools-knowledge/skills/cursor-memory/SKILL.md)（`memory.md`）。
+- サンプル: [rule/rule.example.mdc](../../formats/cursor/rule/rule.example.mdc)（`tools/coding-agent/agents-rules` の出力と同じ形）。出典: [cursor-memory](../../../skills/plugins/ai-tools-knowledge/skills/cursor-memory/SKILL.md)（`memory.md`）。
 
 ## メモリファイル
 

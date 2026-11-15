@@ -89,7 +89,7 @@ Cline は stdin JSON の command hook が無いので生成対象に出さない
 lefthook もこのディレクトリの作業も、各ツールの hooks.json / 慣例ディレクトリへはコピーしない。配置と登録は `skill-tools hooks install`（[tools/skill-tools/README.md](../../../../tools/skill-tools/README.md)）が `generated/catalog.json` を読んで行う。登録するイベント・matcher・オプションの正本は各 `scenarios/<id>/hook.yaml` で、コマンド文字列（配置先パス・runner）は installer が組み立てる。生成元の `../adapters/` ではなく `generated/` を配置・実行する。
 
 - 他プロジェクト: `skill-tools hooks install --agent <agent> <hook-id>`（配置先・登録ファイルの既定表は skill-tools の README）
-- このリポジトリ: リポジトリ直下で `just hooks-install`（初回）/ `just hooks-update`（変更後）。設定は `.claude/skill-tools.hooks.yaml`、成果物は gitignore
+- このリポジトリ: 入れるフックはアンブレラの `.claude/skill-tools.hooks.yaml`（gitignore。サンプル `.claude/skill-tools.hooks.example.yaml` をコピーして編集）の `hooks.install` で選び、リポジトリ直下で `just hooks-install`（`skill-tools hooks sync`）。フックの中身を変えたら `just hooks-update`。成果物は gitignore
 - 全体の流れと設計判断: [maintenance/docs/hook-distribution.md](../../../../maintenance/docs/hook-distribution.md)
 
 各ツール固有の注意（登録内容そのものは `hook.yaml` を見る）:
