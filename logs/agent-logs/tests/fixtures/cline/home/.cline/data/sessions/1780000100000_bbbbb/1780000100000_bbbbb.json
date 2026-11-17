@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "session_id": "1780000100000_bbbbb",
+  "source": "vscode",
+  "started_at": "2026-05-29T00:15:00.000Z",
+  "status": "running",
+  "provider": "example-provider",
+  "model": "example-model",
+  "cwd": "c:\\Users\\alice\\other",
+  "workspace_root": "c:\\Users\\alice\\other",
+  "prompt": "Add tests\nwith more detail",
+  "metadata": {
+    "migratedFromLegacyTask": "1770000500000",
+    "usage": {"inputTokens": 1, "outputTokens": 1, "cacheReadTokens": 0, "cacheWriteTokens": 0, "totalCost": 0.0001}
+  }
+}

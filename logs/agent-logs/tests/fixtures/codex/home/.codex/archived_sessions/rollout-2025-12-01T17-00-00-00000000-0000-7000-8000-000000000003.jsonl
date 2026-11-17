@@ -1,0 +1,7 @@
+{"timestamp":"2025-12-01T08:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-7000-8000-000000000003","timestamp":"2025-12-01T08:00:00.000Z","cwd":"/home/bob/proj","originator":"codex_vscode","cli_version":"0.0.0","source":"vscode","model_provider":"openai","base_instructions":null}}
+{"timestamp":"2025-12-01T08:00:01.000Z","type":"turn_context","payload":{"turn_id":"a1","cwd":"/home/bob/proj","approval_policy":"on-request","sandbox_policy":{"type":"read-only"},"model":"gpt-fake"}}
+{"timestamp":"2025-12-01T08:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello archive\nsecond line"}]}}
+{"timestamp":"2025-12-01T08:00:02.010Z","type":"event_msg","payload":{"type":"user_message","message":"hello archive\nsecond line","images":[]}}
+{"timestamp":"2025-12-01T08:00:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}
+{"timestamp":"2025-12-01T08:00:03.010Z","type":"event_msg","payload":{"type":"agent_message","message":"hi"}}
+{"timestamp":"2025-12-01T08:00:03.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":12},"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":12},"model_context_window":200000},"rate_limits":null}}

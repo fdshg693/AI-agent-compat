@@ -1,0 +1,5 @@
+{
+  "files_in_context": [{"path": "utils.ts", "record_state": "active", "record_source": "read_tool", "cline_read_date": 1770000903000, "cline_edit_date": null, "user_edit_date": null}],
+  "model_usage": [{"ts": 1770000901000, "model_id": "legacy-model", "model_provider_id": "example-provider", "mode": "act"}],
+  "environment_history": [{"ts": 1770000900000, "os_name": "win32", "os_version": "10", "os_arch": "x64", "host_name": "alice-fake-host", "host_version": "1.0.0", "cline_version": "4.0.0"}]
+}

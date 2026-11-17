@@ -1,0 +1,8 @@
+[
+  {"ts": 1760000000000, "type": "say", "say": "task", "text": "Old cli task", "conversationHistoryIndex": -1},
+  {"ts": 1760000001000, "type": "say", "say": "api_req_started", "conversationHistoryIndex": 0,
+   "text": "{\"request\":\"fake\",\"tokensIn\":40,\"tokensOut\":4,\"cacheWrites\":1,\"cacheReads\":2,\"cost\":0.004}"},
+  {"ts": 1760000002000, "type": "say", "say": "command", "text": "ls"},
+  {"ts": 1760000003000, "type": "say", "say": "command_output", "text": "README.md"},
+  {"ts": 1760000004000, "type": "say", "say": "completion_result", "text": "Listed files."}
+]

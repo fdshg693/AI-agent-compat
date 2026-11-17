@@ -5,6 +5,7 @@
 ## 中身
 
 - [hooks/](hooks/README.md) — 複数ツール向けのフックとコンテキスト注入（[hooks/agent-tooling/](hooks/agent-tooling/README.md)）。フックの正本はここで、`.claude/hooks/` などはインストール先（[hook-distribution](../maintenance/docs/hook-distribution.md)）
+- [logs/](logs/README.md) — 各ツールがローカルに残すログを横断して一覧・検索・集計する CLI（[logs/agent-logs/](logs/agent-logs/README.md)、読み取り専用）。ログ形式の正本は知識スキル
 - [formats/](formats/) — ツール固有の書式でしか書けないファイルの最小サンプル（`formats/<tool>/` の `skill`・`plugin`・`rule`・`memory` 等）。各ツールの README が、対応する置き場所と根拠の知識スキルを示す
 - [docs/differences/](docs/differences/index.md) — Claude Code を基準にした、ツールごとの書き方の相違点
 

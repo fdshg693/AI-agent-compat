@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "agent": "lead",
+  "sessionId": "1780000100000_bbbbb",
+  "messages": [
+    {"id": "u1", "role": "user", "ts": 1780000100000, "content": [{"type": "text", "text": "Add tests"}]},
+    {"id": "a1", "role": "assistant", "ts": 1780000105000,
+     "modelInfo": {"id": "example-model", "provider": "example-provider"},
+     "metrics": {"inputTokens": 100, "outputTokens": 50, "cacheReadTokens": 0, "cacheWriteTokens": 10, "cost": 0.05},
+     "content": [{"type": "tool_use", "id": "t9", "name": "run_commands", "input": {"commands": ["pytest"]}}]},
+    {"id": "u2", "role": "user", "ts": 1780000106000,
+     "content": [{"type": "tool_result", "tool_use_id": "t9", "content": [{"type": "text", "text": "1 passed"}]}]}
+  ]
+}

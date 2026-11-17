@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-logs"
+version = "0.1.0"
+description = "Read-only search and stats over local AI coding agent logs (Claude Code, Cursor, Cline, Kilo Code, Antigravity, Codex)"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
+
+[project.scripts]
+agent-logs = "agent_logs.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent_logs*"]

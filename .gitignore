@@ -19,7 +19,7 @@ node_modules/
 # local notes / scratch / logs
 memo/
 temp/
-logs/
+# (no "logs/" rule: logs/ holds the agent-logs CLI and its fixtures contain logs/ dirs)
 *.log
 # skill-tools feedback (`--fb`)
 fb/
