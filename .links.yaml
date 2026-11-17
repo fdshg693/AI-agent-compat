@@ -20,3 +20,6 @@ links:
   - path: _umbrella/ai-tools-knowledge
     target: skills/plugins/ai-tools-knowledge
     why: the knowledge skills that formats/ samples and docs/differences/ are based on
+  - path: _umbrella/cc-knowledge
+    target: skills/plugins/cc-knowledge
+    why: Claude Code log format (claude-logs-investigate) that logs/agent-logs reads

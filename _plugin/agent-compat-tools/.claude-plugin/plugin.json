@@ -1,0 +1,5 @@
+{
+  "name": "agent-compat-tools",
+  "version": "0.1.0",
+  "description": "Usage skills for the agent-compat CLIs (agent-logs: search and stats over local AI coding agent logs)"
+}
