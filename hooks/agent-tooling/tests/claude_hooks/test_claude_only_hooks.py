@@ -235,6 +235,33 @@ def test_stop_alert_disabled_flags_win_over_supported_platform(monkeypatch, clea
     assert stop_alert.show_popup() == {"ok": False, "mode": "disabled"}
 
 
+def test_stop_alert_suppressed_disables_backends(monkeypatch, clean_hook_env):
+    monkeypatch.setattr(notify.sys, "platform", "win32")
+    assert stop_alert.play_alert(suppressed=True) == {"ok": False, "mode": "disabled"}
+    assert stop_alert.show_popup(suppressed=True) == {"ok": False, "mode": "disabled"}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="抑止の判定は Windows だけ")
+@pytest.mark.parametrize("kind", ["snooze", "mute"])
+def test_stop_alert_honors_suppression_state(install_hook, tmp_path, kind):
+    """スヌーズ・消音のどちらでも音は止まり、ログに理由が残る。"""
+    import time
+
+    from agent_tooling.notify import state
+
+    state_dir = tmp_path / "state"
+    state._state_set(state_dir, kind, "session", time.time() + 600, session_id="sid")
+    hook_ = install_hook("stop_alert")
+    env = {"HOOK_LOG": "true", "STOP_ALERT_STATE_DIR": str(state_dir), "STOP_ALERT_POPUP": "false"}
+    assert hook_.run({"session_id": "sid"}, env=env).returncode == 0
+    (log,) = (hook_.hooks_dir / "logs" / "stop_alert").glob("*.log")
+    record = json.loads(log.read_text(encoding="utf-8"))
+    assert record["suppressed"] == f"{kind}:session"
+    assert record["sound"]["mode"] == "disabled"
+    # 窓は STOP_ALERT_POPUP=false で実際には出さない（スヌーズで止まるかは test_notify で見る）
+    assert record["popup"]["mode"] == "disabled"
+
+
 def test_resolve_sound_path_prefers_env_then_hook_dir(tmp_path, monkeypatch):
     wav = tmp_path / "custom.wav"
     wav.write_bytes(b"RIFF")
@@ -260,13 +287,53 @@ def test_show_popup_respawns_running_hook_with_popup_flag(monkeypatch, clean_hoo
         notify_windows.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
     )
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/work/my-project")
+    monkeypatch.setenv("STOP_ALERT_STATE_DIR", "C:/state")
 
-    result = stop_alert.show_popup(text="hi", seconds=5)
+    result = stop_alert.show_popup(text="hi", seconds=5, session_id="sid")
     assert result["ok"] is True
     (argv,) = spawned
     assert argv[0] == sys.executable
     assert Path(argv[1]) == Path("C:/hooks/stop_alert.py").resolve()
-    assert argv[2:] == [stop_alert.POPUP_FLAG, "hi", "5", "my-project"]
+    assert argv[2:] == [
+        stop_alert.POPUP_FLAG,
+        "hi",
+        "5",
+        "my-project",
+        "sid",
+        str(Path("C:/state")),
+    ]
+
+
+def test_resolve_state_dir_prefers_env_then_localappdata(monkeypatch, clean_hook_env, tmp_path):
+    monkeypatch.setenv("STOP_ALERT_STATE_DIR", str(tmp_path / "s"))
+    assert stop_alert.resolve_state_dir() == tmp_path / "s"
+    monkeypatch.delenv("STOP_ALERT_STATE_DIR")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert stop_alert.resolve_state_dir() == tmp_path / "agent-tooling" / "notify"
+    monkeypatch.delenv("LOCALAPPDATA")
+    assert stop_alert.resolve_state_dir() is None
+
+
+@pytest.mark.parametrize(
+    "argv, session_id, state_dir",
+    [
+        (["hi", "5", "p"], "", None),
+        (["hi", "5", "p", "sid", ""], "sid", None),
+        (["hi", "5", "p", "sid", "C:/state"], "sid", Path("C:/state")),
+    ],
+)
+def test_run_popup_window_parses_argv(monkeypatch, argv, session_id, state_dir):
+    calls = []
+    monkeypatch.setattr(
+        stop_alert, "run_notify_popup", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    stop_alert.run_popup_window(argv)
+    assert calls == [
+        (
+            ("hi", 5.0, "p", stop_alert.APP_NAME),
+            {"session_id": session_id, "state_dir": state_dir},
+        )
+    ]
 
 
 def test_show_popup_on_macos_posts_keyed_by_session(monkeypatch, clean_hook_env, tmp_path):

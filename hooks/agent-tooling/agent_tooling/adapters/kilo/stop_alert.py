@@ -7,7 +7,9 @@ session directory) and ``event``. Plays ``alert.wav`` next to this file (or
 ``STOP_ALERT_SOUND``), else the OS default sound, and shows the same visual
 notification as the Claude Code ``stop_alert`` hook (``agent_tooling/notify/``):
 
-- Windows: a detached tkinter popup titled ``Kilo Code - <folder name of cwd>``.
+- Windows: a detached tkinter popup titled ``Kilo Code - <folder name of cwd>``
+  (normal window that does not steal focus, replaces the previous popup of
+  the same session, and has snooze / mute buttons shared with the Claude hook).
 - macOS: a Notification Center notification keyed by ``session_id`` (via the
   KiloNotify helper .app when built, else ``osascript``).
 - Other OSes: does nothing (``unsupported``).
@@ -17,11 +19,14 @@ agent_tooling/hooks/generated/kilo/stop_alert.py and its .ts sidecar into
 .kilo/plugin/. Environment variables (also readable from ``.env`` next to this
 file) are the same as the Claude hook: ``STOP_ALERT_SOUND``,
 ``STOP_ALERT_SOUND_ENABLED``, ``STOP_ALERT_POPUP``,
-``STOP_ALERT_POPUP_SECONDS``, ``STOP_ALERT_POPUP_TEXT``, ``HOOK_LOG``.
+``STOP_ALERT_POPUP_SECONDS``, ``STOP_ALERT_POPUP_TEXT``, ``STOP_ALERT_STATE_DIR``,
+``HOOK_LOG``.
 
 手動確認（配置済みファイルに対して実行する）:
 - `python stop_alert.py --sound` 音だけ鳴らして結果を表示する（0=成功、1=失敗）
 - `python stop_alert.py --popup "テスト" 5 my-project` ポップアップをその場で表示する
+- `python stop_alert.py --popup "テスト" 60 my-project test-session "%LOCALAPPDATA%\\agent-tooling\\notify"`
+  置き換え・スヌーズ／消音のボタンも含めて確認する
 """
 
 import json
@@ -36,9 +41,12 @@ from agent_tooling.notify import (
     mac_helper_app,
     notify_popup,
     notify_sound,
+    notify_state_dir,
+    notify_suppression,
     resolve_project_title,
     run_notify_popup,
     shorten_home,
+    suppression_reason,
 )
 
 # Debug-log ON/OFF only (writes to logs/stop_alert/ next to this file).
@@ -82,13 +90,14 @@ def _project_title(cwd: str = "") -> str:
     return resolve_project_title(cwd.strip() or None, anchor=Path(__file__), marker=".kilo")
 
 
-def play_alert() -> dict:
-    return notify_sound(
-        resolve_sound_path(), enabled=resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True)
-    )
+def play_alert(*, suppressed: bool = False) -> dict:
+    """`suppressed` はポップアップで選んだスヌーズ・消音が効いているとき True（鳴らさない）。"""
+    enabled = resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True) and not suppressed
+    return notify_sound(resolve_sound_path(), enabled=enabled)
 
 
-def show_popup(*, session_id: str = "", cwd: str = "") -> dict:
+def show_popup(*, session_id: str = "", cwd: str = "", suppressed: bool = False) -> dict:
+    """`suppressed` はスヌーズが効いているとき True（出さない）。"""
     text = os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or KILO_POPUP_TEXT
     return notify_popup(
         text,
@@ -97,19 +106,37 @@ def show_popup(*, session_id: str = "", cwd: str = "") -> dict:
         # インライン化後は notify/ のファイルが無いので、実行中のこのファイルを再実行させる
         entry_script=Path(sys.argv[0]),
         popup_flag=POPUP_FLAG,
-        enabled=resolve_bool_flag("STOP_ALERT_POPUP", True),
+        enabled=resolve_bool_flag("STOP_ALERT_POPUP", True) and not suppressed,
         subtitle=shorten_home(cwd or os.getcwd()),
         notification_id=session_id,
         helper_app=mac_helper_app(MAC_HELPER_NAME),
+        session_id=session_id,
+        state_dir=resolve_state_dir(),
     )
 
 
+def resolve_state_dir() -> Path | None:
+    """通知の状態を置くディレクトリ: `STOP_ALERT_STATE_DIR` → `%LOCALAPPDATA%\\agent-tooling\\notify`。
+
+    Claude 版と同じ既定のパスを使う（状態を共有する）。
+    """
+    env_dir = os.environ.get("STOP_ALERT_STATE_DIR", "").strip()
+    if env_dir:
+        return Path(env_dir)
+    return notify_state_dir(os.environ.get("LOCALAPPDATA"))
+
+
 def run_popup_window(argv: list[str]) -> None:
-    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project]`（省略可）。"""
+    """`--popup` 付きで起動された子プロセスの本体。
+
+    argv は `[text, seconds, project, session_id, state_dir]`（後ろから省略可、空文字は未指定）。
+    """
     text = argv[0] if len(argv) > 0 else KILO_POPUP_TEXT
     seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
     project = argv[2] if len(argv) > 2 else _project_title()
-    run_notify_popup(text, seconds, project, APP_NAME)
+    session_id = argv[3] if len(argv) > 3 else ""
+    state_dir = Path(argv[4]) if len(argv) > 4 and argv[4] else None
+    run_notify_popup(text, seconds, project, APP_NAME, session_id=session_id, state_dir=state_dir)
 
 
 def main():
@@ -135,13 +162,24 @@ def main():
     log["session_id"] = payload.get("session_id")
 
     try:
-        sound_result = play_alert()
+        session_id = str(payload.get("session_id") or "")
+        # ポップアップのボタンで選んだ抑止（Windows だけ）。スヌーズ＝音も窓も、消音＝音だけ止める
+        suppression = notify_suppression(resolve_state_dir(), session_id)
+        sound_result = play_alert(suppressed=bool(suppression["snooze"] or suppression["mute"]))
         popup_result = show_popup(
-            session_id=str(payload.get("session_id") or ""), cwd=str(payload.get("cwd") or "")
+            session_id=session_id,
+            cwd=str(payload.get("cwd") or ""),
+            suppressed=bool(suppression["snooze"]),
         )
     except Exception as exc:  # never fail the Kilo session
         finish(0, reason="error", detail=str(exc))
-    finish(0, reason="played", sound=sound_result, popup=popup_result)
+    finish(
+        0,
+        reason="played",
+        sound=sound_result,
+        popup=popup_result,
+        suppressed=suppression_reason(suppression),
+    )
 
 
 if __name__ == "__main__":

@@ -167,10 +167,12 @@ def _mac_spawn_popup(
     subtitle: str = "",
     notification_id: str = "",
     helper_app: Path | None = None,
+    **_win_only: object,
 ) -> dict:
     """視覚通知を通知センターへ出す（子プロセスは使わない。`seconds` は通知センターに任せる）。
 
     音は `notify_sound()` が別に鳴らすので、通知には音を付けない（二重に鳴らさない）。
+    `_win_only`（`session_id`・`state_dir`）は Windows のポップアップ用で、ここでは使わない。
     """
     del seconds, entry_script, popup_flag  # Windows のポップアップ用
     return _mac_post(

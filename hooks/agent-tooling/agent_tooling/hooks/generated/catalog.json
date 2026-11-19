@@ -640,7 +640,7 @@
     },
     {
       "id": "stop_alert",
-      "description": "応答完了（Stop）時にアラート音と視覚通知を出す（Windows は画面右下のポップアップ、macOS は通知センター）",
+      "description": "応答完了（Stop）時にアラート音と視覚通知を出す（Windows はフォーカスを奪わない画面右下のポップアップ＋スヌーズ・消音、macOS は通知センター）",
       "distributable": true,
       "requiresTools": [],
       "agents": {

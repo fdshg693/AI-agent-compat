@@ -6,6 +6,9 @@ Claude finishes a turn.
   path in `STOP_ALERT_SOUND`); otherwise falls back to a system beep. Also
   spawns a detached, auto-closing tkinter popup (bottom-right, always-on-top)
   that runs in a child process re-executing this same file with `--popup`.
+  The popup is a normal window (minimize to the taskbar, resize, maximize)
+  that does not steal focus, replaces the previous popup of the same session,
+  and offers snooze / mute buttons honored by the next alerts.
 - macOS: plays the same sound file (or a system sound) with `afplay` without
   waiting, and posts a Notification Center notification (title = project,
   subtitle = cwd). With the ClaudeNotify helper .app built
@@ -20,6 +23,8 @@ Stop-hook re-entry loops even though this hook does not block.
 手動確認（配置済みファイルに対して実行する）:
 - `python stop_alert.py --sound` 音だけ鳴らして結果を表示する（0=成功、1=失敗）
 - `python stop_alert.py --popup "テスト" 5 my-project` ポップアップをその場で表示する
+- `python stop_alert.py --popup "テスト" 60 my-project test-session "%LOCALAPPDATA%\\agent-tooling\\notify"`
+  置き換え・スヌーズ／消音のボタンも含めて確認する（同じ session_id で 2 回実行すると古い窓が閉じる）
 """
 
 """
@@ -34,7 +39,9 @@ Stop-hook re-entry loops even though this hook does not block.
 - `STOP_ALERT_POPUP_SECONDS` ポップアップが自動で閉じるまでの秒数。未設定なら 300。
                               macOS では使わない（表示時間は通知センターの設定に従う）。
 - `STOP_ALERT_POPUP_TEXT`    ポップアップに表示するメッセージ。未設定なら既定文言。
-- `HOOK_LOG`                  このフックの「デバッグログ」を配置先ディレクトリの`logs/stop_alert/`
+- `STOP_ALERT_STATE_DIR`     Windows のポップアップの状態（同じセッションの古い窓の置き換え用の記録と、
+                              ボタンで選んだスヌーズ・消音の `state.json`）を置くディレクトリ。未設定なら `%LOCALAPPDATA%\\agent-tooling\\notify`。
+- `HOOK_LOG`                 このフックの「デバッグログ」を配置先ディレクトリの`logs/stop_alert/`
                               に書き出すかどうか（true/false等）。フック自体の有効/無効ではない
                               （そちらは登録の有無で決まる）。
                               未設定ならスクリプト先頭の`ENABLE_HOOK_LOG`に従う。
@@ -49,9 +56,12 @@ from agent_tooling.notify import (
     mac_helper_app,
     notify_popup,
     notify_sound,
+    notify_state_dir,
+    notify_suppression,
     resolve_project_title,
     run_notify_popup,
     shorten_home,
+    suppression_reason,
 )
 
 from .common.hook_log import is_log_enabled, resolve_bool_flag
@@ -107,11 +117,13 @@ def _project_title() -> str:
     )
 
 
-def play_alert() -> dict:
-    """アラート音を鳴らす（`STOP_ALERT_SOUND_ENABLED`・`STOP_ALERT_SOUND` を解決して渡す）。"""
-    return notify_sound(
-        resolve_sound_path(), enabled=resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True)
-    )
+def play_alert(*, suppressed: bool = False) -> dict:
+    """アラート音を鳴らす（`STOP_ALERT_SOUND_ENABLED`・`STOP_ALERT_SOUND` を解決して渡す）。
+
+    `suppressed` はポップアップで選んだスヌーズ・消音が効いているとき True（鳴らさない）。
+    """
+    enabled = resolve_bool_flag("STOP_ALERT_SOUND_ENABLED", True) and not suppressed
+    return notify_sound(resolve_sound_path(), enabled=enabled)
 
 
 def show_popup(
@@ -120,11 +132,13 @@ def show_popup(
     *,
     session_id: str = "",
     cwd: str = "",
+    suppressed: bool = False,
 ) -> dict:
     """視覚通知を出す（`STOP_ALERT_POPUP*` を解決して渡す）。
 
     Windows は別プロセスのポップアップ。macOS は通知センターで、`session_id` を
     identifier にして同じセッションの通知を置き換え、サブタイトルに `cwd` を出す。
+    `suppressed` はスヌーズが効いているとき True（出さない）。
     """
     message = text or os.environ.get("STOP_ALERT_POPUP_TEXT", "").strip() or DEFAULT_POPUP_TEXT
     duration = (
@@ -139,19 +153,34 @@ def show_popup(
         # インライン化後は notify/ のファイルが無いので、実行中のこのフックを再実行させる
         entry_script=Path(sys.argv[0]),
         popup_flag=POPUP_FLAG,
-        enabled=resolve_bool_flag("STOP_ALERT_POPUP", True),
+        enabled=resolve_bool_flag("STOP_ALERT_POPUP", True) and not suppressed,
         subtitle=shorten_home(cwd or os.getcwd()),
         notification_id=session_id,
         helper_app=mac_helper_app(MAC_HELPER_NAME),
+        session_id=session_id,
+        state_dir=resolve_state_dir(),
     )
 
 
+def resolve_state_dir() -> Path | None:
+    """通知の状態を置くディレクトリ: `STOP_ALERT_STATE_DIR` → `%LOCALAPPDATA%\\agent-tooling\\notify`。"""
+    env_dir = os.environ.get("STOP_ALERT_STATE_DIR", "").strip()
+    if env_dir:
+        return Path(env_dir)
+    return notify_state_dir(os.environ.get("LOCALAPPDATA"))
+
+
 def run_popup_window(argv: list[str]) -> None:
-    """`--popup` 付きで起動された子プロセスの本体。argv は `[text, seconds, project]`（省略可）。"""
+    """`--popup` 付きで起動された子プロセスの本体。
+
+    argv は `[text, seconds, project, session_id, state_dir]`（後ろから省略可、空文字は未指定）。
+    """
     text = argv[0] if len(argv) > 0 else DEFAULT_POPUP_TEXT
     seconds = float(argv[1]) if len(argv) > 1 else DEFAULT_POPUP_SECONDS
     project = argv[2] if len(argv) > 2 else _project_title()
-    run_notify_popup(text, seconds, project, APP_NAME)
+    session_id = argv[3] if len(argv) > 3 else ""
+    state_dir = Path(argv[4]) if len(argv) > 4 and argv[4] else None
+    run_notify_popup(text, seconds, project, APP_NAME, session_id=session_id, state_dir=state_dir)
 
 
 def main():
@@ -180,11 +209,22 @@ def main():
     if payload.get("stop_hook_active"):
         finish(0, reason="stop_hook_active, skipped")
 
-    sound_result = play_alert()
+    session_id = str(payload.get("session_id") or "")
+    # ポップアップのボタンで選んだ抑止（Windows だけ）。スヌーズ＝音も窓も、消音＝音だけ止める
+    suppression = notify_suppression(resolve_state_dir(), session_id)
+    sound_result = play_alert(suppressed=bool(suppression["snooze"] or suppression["mute"]))
     popup_result = show_popup(
-        session_id=str(payload.get("session_id") or ""), cwd=str(payload.get("cwd") or "")
+        session_id=session_id,
+        cwd=str(payload.get("cwd") or ""),
+        suppressed=bool(suppression["snooze"]),
     )
-    finish(0, reason="played", sound=sound_result, popup=popup_result)
+    finish(
+        0,
+        reason="played",
+        sound=sound_result,
+        popup=popup_result,
+        suppressed=suppression_reason(suppression),
+    )
 
 
 if __name__ == "__main__":

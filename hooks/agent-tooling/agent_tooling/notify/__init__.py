@@ -20,6 +20,7 @@ from .project import UNKNOWN_PROJECT_TITLE as UNKNOWN_PROJECT_TITLE
 from .project import resolve_project_title as resolve_project_title
 from .text import format_title as format_title
 from .text import shorten_home as shorten_home
+from .state import _state_check
 from .text import truncate_body as truncate_body
 from .windows import _win_play_sound, _win_run_popup, _win_spawn_popup
 
@@ -67,16 +68,20 @@ def notify_popup(
     subtitle: str = "",
     notification_id: str = "",
     helper_app: Path | None = None,
+    session_id: str = "",
+    state_dir: Path | None = None,
 ) -> dict:
     """視覚通知を出す（呼び出し元を長くブロックしない）。
 
     - Windows: `entry_script`（実行中のフック。インライン化後は `sys.argv[0]`）を
-      `popup_flag text seconds project` 付きの別プロセスで再実行する。子プロセス側は
-      呼び出し元のエントリが argv を分岐して `run_notify_popup()` を呼ぶ。
-      `subtitle`・`notification_id`・`helper_app` は使わない
+      `popup_flag text seconds project session_id state_dir` 付きの別プロセスで再実行する。
+      子プロセス側は呼び出し元のエントリが argv を分岐して `run_notify_popup()` を呼ぶ。
+      同じ `session_id` の古い窓は、`state_dir`（`notify_state_dir()`）に残した記録を
+      使って閉じてから出す。`subtitle`・`notification_id`・`helper_app` は使わない
     - macOS: 通知センターへ同期で出す（タイトル=`project`、サブタイトル=`subtitle`、
       本文=`text` を整形したもの）。`notification_id` が同じ通知は置き換わる。
-      `helper_app` は通知ヘルパー `<Name>.app`（`mac_helper_app()`）。`seconds` は使わない
+      `helper_app` は通知ヘルパー `<Name>.app`（`mac_helper_app()`）。
+      `seconds`・`session_id`・`state_dir` は使わない
     """
     backend = _POPUP_SPAWNERS.get(sys.platform)
     if backend is None:
@@ -93,16 +98,70 @@ def notify_popup(
             subtitle=subtitle,
             notification_id=notification_id,
             helper_app=helper_app,
+            session_id=session_id,
+            state_dir=state_dir,
         )
     except Exception as exc:
         return {"ok": False, "mode": "spawn_failed", "detail": str(exc)}
 
 
-def run_notify_popup(text: str, seconds: float, project: str, app_name: str) -> None:
-    """`notify_popup()` が起動した子プロセスの本体。ウィンドウを閉じるまで戻らない。"""
+def run_notify_popup(
+    text: str,
+    seconds: float,
+    project: str,
+    app_name: str,
+    *,
+    session_id: str = "",
+    state_dir: Path | None = None,
+) -> None:
+    """`notify_popup()` が起動した子プロセスの本体。ウィンドウを閉じるまで戻らない。
+
+    手で実行したときに見えるよう、窓の例外はそのまま出す（子プロセスの出力は捨てている）。
+    """
     backend = _POPUP_WINDOWS.get(sys.platform)
     if backend is not None:
-        backend(text, seconds, project, app_name)
+        backend(text, seconds, project, app_name, session_id=session_id, state_dir=state_dir)
+
+
+def notify_state_dir(local_app_data: str | None) -> Path | None:
+    """通知の状態ファイルを置く既定のディレクトリ（`<LOCALAPPDATA>/agent-tooling/notify`）。
+
+    `local_app_data` は呼び出し元が環境変数から読んで渡す。空なら None（置き換え等をしない）。
+    フックの配置先（プロジェクト・グローバル、Claude・Kilo）によらず 1 つで済ませる。
+    """
+    if not local_app_data or not local_app_data.strip():
+        return None
+    return Path(local_app_data.strip()) / "agent-tooling" / "notify"
+
+
+def notify_suppression(state_dir: Path | None, session_id: str = "") -> dict:
+    """今効いている抑止（ポップアップのボタンで選んだスヌーズ・消音）。
+
+    戻り値は `{"snooze": {"scope": "global"|"session", "until": <epoch 秒>} | None,
+    "mute": 同じ形 | None}`。スヌーズは音も窓も、消音は音だけを止める合図で、
+    `notify_sound`／`notify_popup` の `enabled` への合成はアダプタが行う。
+    抑止のボタンを持つ OS（`_POPUP_WINDOWS` にある OS＝Windows）だけで判定し、
+    それ以外の OS・`state_dir` が無い・状態ファイルが読めないときは抑止なしを返す。
+    """
+    none = {"snooze": None, "mute": None}
+    if sys.platform not in _POPUP_WINDOWS or state_dir is None:
+        return none
+    try:
+        return _state_check(state_dir, session_id)
+    except Exception:
+        return none
+
+
+def suppression_reason(suppression: dict) -> str:
+    """`notify_suppression()` の結果をログ用の 1 語にする（例: `snooze:global,mute:session`）。
+
+    抑止が無ければ空文字。
+    """
+    return ",".join(
+        f"{kind}:{entry['scope']}"
+        for kind in ("snooze", "mute")
+        if (entry := suppression.get(kind))
+    )
 
 
 def notify_post(

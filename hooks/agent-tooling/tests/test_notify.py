@@ -96,7 +96,87 @@ def test_darwin_dispatches_popup_to_mac_backend(monkeypatch, tmp_path):
     )
     ((args, kwargs),) = calls
     assert args == ("t", 1, "p", Path("x.py"), "--popup")
-    assert kwargs == {"subtitle": "~/w", "notification_id": "sid", "helper_app": tmp_path / "X.app"}
+    assert kwargs == {
+        "subtitle": "~/w",
+        "notification_id": "sid",
+        "helper_app": tmp_path / "X.app",
+        "session_id": "",
+        "state_dir": None,
+    }
+
+
+def test_run_notify_popup_passes_session_and_state_dir(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(notify.sys, "platform", "win32")
+    monkeypatch.setitem(
+        notify._POPUP_WINDOWS, "win32", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    notify.run_notify_popup("t", 1, "p", "App", session_id="sid", state_dir=tmp_path)
+    assert calls == [(("t", 1, "p", "App"), {"session_id": "sid", "state_dir": tmp_path})]
+
+
+def test_notify_state_dir():
+    assert notify.notify_state_dir("C:/Users/u/AppData/Local") == Path(
+        "C:/Users/u/AppData/Local/agent-tooling/notify"
+    )
+    assert notify.notify_state_dir("") is None
+    assert notify.notify_state_dir("  ") is None
+    assert notify.notify_state_dir(None) is None
+
+
+def test_notify_suppression_reads_state_only_where_buttons_exist(monkeypatch, tmp_path):
+    import time
+
+    from agent_tooling.notify import state
+
+    until = time.time() + 600
+    state._state_set(tmp_path, "snooze", "global", until)
+    monkeypatch.setattr(notify.sys, "platform", "win32")
+    assert notify.notify_suppression(tmp_path, "sid") == {
+        "snooze": {"scope": "global", "until": until},
+        "mute": None,
+    }
+    assert notify.notify_suppression(None, "sid") == {"snooze": None, "mute": None}
+    # macOS の挙動は変えない（判定しない）
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    assert notify.notify_suppression(tmp_path, "sid") == {"snooze": None, "mute": None}
+
+
+def test_notify_suppression_swallows_exceptions(monkeypatch, tmp_path):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(notify.sys, "platform", "win32")
+    monkeypatch.setattr(notify, "_state_check", boom)
+    assert notify.notify_suppression(tmp_path, "sid") == {"snooze": None, "mute": None}
+
+
+def test_suppression_reason():
+    assert notify.suppression_reason({"snooze": None, "mute": None}) == ""
+    both = {"snooze": {"scope": "global", "until": 1}, "mute": {"scope": "session", "until": 1}}
+    assert notify.suppression_reason(both) == "snooze:global,mute:session"
+
+
+@pytest.mark.parametrize(
+    "seconds, expected",
+    [
+        (1, "あと 1分"),
+        (60, "あと 1分"),
+        (61, "あと 2分"),
+        (3600, "あと 1時間"),
+        (3900, "あと 1時間5分"),
+    ],
+)
+def test_win_format_remaining(seconds, expected):
+    assert notify_windows._win_format_remaining(seconds) == expected
+
+
+def test_win_suppression_text():
+    assert notify_windows._win_suppression_text({"snooze": None, "mute": None}, 0) == ""
+    text = notify_windows._win_suppression_text(
+        {"snooze": {"scope": "global", "until": 900}, "mute": {"scope": "session", "until": 60}}, 0
+    )
+    assert text == "スヌーズ中（すべて・あと 15分）　消音中（このセッション・あと 1分）"
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +292,111 @@ def test_win_spawn_popup_reruns_entry_script(monkeypatch):
         "hi",
         "5.0",
         "proj",
+        "",
+        "",
     ]
+
+
+def test_win_spawn_popup_passes_session_and_state_dir(monkeypatch, tmp_path):
+    spawned = []
+    monkeypatch.setattr(notify_windows.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(notify_windows.subprocess, "CREATE_NEW_PROCESS_GROUP", 0, raising=False)
+    monkeypatch.setattr(
+        notify_windows.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
+    )
+    notify_windows._win_spawn_popup(
+        "hi",
+        5.0,
+        "proj",
+        Path("x.py"),
+        "--popup",
+        session_id="sid",
+        state_dir=tmp_path,
+        subtitle="~/w",  # macOS 用の引数は無視する
+    )
+    (argv,) = spawned
+    assert argv[-2:] == ["sid", str(tmp_path)]
+
+
+# ---------------------------------------------------------------------------
+# Windows: 同じセッションの古いポップアップの置き換え（プロセス操作は差し替える）
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_processes(monkeypatch):
+    """pid → 起動時刻 の表でプロセスを模す。終了した pid を `terminated` に記録する。"""
+    started = {notify_windows.os.getpid(): 1000}
+    terminated = []
+    monkeypatch.setattr(notify_windows, "_win_process_started", started.get)
+    monkeypatch.setattr(
+        notify_windows, "_win_terminate", lambda pid: terminated.append(pid) or True
+    )
+    return started, terminated
+
+
+def _write_record(path: Path, pid: int, started: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'{{"pid": {pid}, "started": {started}}}', encoding="utf-8")
+
+
+def test_win_popup_record_path_sanitizes_session_id(tmp_path):
+    path = notify_windows._win_popup_record_path(tmp_path, "a/b:c d")
+    assert path == tmp_path / "popup-a_b_c_d.json"
+
+
+def test_win_replace_terminates_previous_popup_and_records_self(fake_processes, tmp_path):
+    started, terminated = fake_processes
+    started[4242] = 77
+    record = notify_windows._win_popup_record_path(tmp_path, "sid")
+    _write_record(record, 4242, 77)
+
+    assert notify_windows._win_replace_previous_popup(tmp_path, "sid") == record
+    assert terminated == [4242]
+    me = notify_windows.os.getpid()
+    assert notify_windows._win_read_popup_record(record) == {"pid": me, "started": 1000}
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_win_replace_skips_reused_pid(fake_processes, tmp_path):
+    """pid が再利用された（起動時刻が違う）プロセスは終了しない。"""
+    started, terminated = fake_processes
+    started[4242] = 99
+    _write_record(notify_windows._win_popup_record_path(tmp_path, "sid"), 4242, 77)
+    notify_windows._win_replace_previous_popup(tmp_path, "sid")
+    assert terminated == []
+
+
+@pytest.mark.parametrize("content", ["", "not json", "[]", '{"pid": "1", "started": 2}'])
+def test_win_replace_ignores_broken_record(fake_processes, tmp_path, content):
+    _, terminated = fake_processes
+    record = notify_windows._win_popup_record_path(tmp_path, "sid")
+    record.write_text(content, encoding="utf-8")
+    assert notify_windows._win_replace_previous_popup(tmp_path, "sid") == record
+    assert terminated == []
+
+
+@pytest.mark.parametrize("session_id, use_dir", [("", True), ("sid", False)])
+def test_win_replace_does_nothing_without_session_or_dir(
+    fake_processes, tmp_path, session_id, use_dir
+):
+    _, terminated = fake_processes
+    state_dir = tmp_path if use_dir else None
+    assert notify_windows._win_replace_previous_popup(state_dir, session_id) is None
+    assert terminated == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_win_forget_popup_keeps_newer_record(tmp_path):
+    record = tmp_path / "popup-sid.json"
+    _write_record(record, notify_windows.os.getpid() + 1, 5)  # 新しい窓が上書きした
+    notify_windows._win_forget_popup(record)
+    assert record.exists()
+
+    _write_record(record, notify_windows.os.getpid(), 5)
+    notify_windows._win_forget_popup(record)
+    assert not record.exists()
+    notify_windows._win_forget_popup(None)  # 何もしない
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +540,17 @@ def test_mac_spawn_popup_posts_without_sound(monkeypatch, helper_app):
     ((args, kwargs),) = posted
     assert args == ("proj", "~/w", "line1 line2")
     assert kwargs == {"notification_id": "sid", "helper_app": helper_app}
+
+
+def test_mac_spawn_popup_ignores_windows_only_arguments(monkeypatch, helper_app, tmp_path):
+    posted = []
+    monkeypatch.setattr(
+        notify_macos, "_mac_post", lambda *args, **kwargs: posted.append((args, kwargs)) or {}
+    )
+    notify_macos._mac_spawn_popup(
+        "t", 300, "proj", Path("x.py"), "--popup", session_id="sid", state_dir=tmp_path
+    )
+    assert len(posted) == 1
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])

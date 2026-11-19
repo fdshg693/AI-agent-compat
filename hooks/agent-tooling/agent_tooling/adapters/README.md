@@ -34,8 +34,12 @@ next to the installed file (`hook_dir()`), and project content is resolved
 with `resolve_project_dir(payload)`.
 `stop_alert` takes its sound and popup backends from `agent_tooling/notify/`
 (per-OS dispatch: Windows popup, macOS Notification Center; no environment or
-`.env` reads); the adapter resolves `STOP_ALERT_*`, `.env`, `alert.wav` and the
-macOS helper `.app` location and passes the values in.
+`.env` reads); the adapter resolves `STOP_ALERT_*`, `.env`, `alert.wav`, the
+macOS helper `.app` location and the Windows popup state directory
+(`STOP_ALERT_STATE_DIR`, else `%LOCALAPPDATA%\agent-tooling\notify`) and passes
+the values in. Before playing anything it asks `notify_suppression()` whether
+the snooze (no sound, no popup) or mute (no sound) chosen from the popup's
+buttons is active, and folds that into `enabled`.
 
 The `notify` scenario (`adapters/<agent>/notify.py`, built to
 `hooks/generated/<agent>/notify.py`; Claude, Codex and Kilo, where Kilo
