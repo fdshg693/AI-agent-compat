@@ -1,0 +1,3 @@
+{"type":"user","uuid":"v1","parentUuid":null,"sessionId":"33333333-3333-3333-3333-333333333333","timestamp":"2026-02-01T10:00:00.000Z","cwd":"c:\\Users\\alice\\proj\\sub","message":{"role":"user","content":"Second session about deploy"}}
+{"type":"assistant","uuid":"v2","parentUuid":"v1","sessionId":"33333333-3333-3333-3333-333333333333","timestamp":"2026-02-01T10:00:01.000Z","message":{"id":"msg_v","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"Deploy done"}],"usage":{"input_tokens":1,"output_tokens":2}}}
+{"type":"custom-title","customTitle":"Deploy work"}

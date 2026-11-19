@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "updated_at": "2026-05-28T20:30:00.000Z",
+  "agent": "lead",
+  "sessionId": "1780000000000_aaaaa",
+  "system_prompt": "You are a fictional assistant.",
+  "messages": [
+    {"id": "m1", "role": "user", "ts": 1780000000000, "content": [{"type": "text", "text": "Please fix the build"}]},
+    {"id": "m2", "role": "assistant", "ts": 1780000001000,
+     "modelInfo": {"id": "example-model", "provider": "example-provider"},
+     "metrics": {"inputTokens": 10, "outputTokens": 5, "cacheReadTokens": 0, "cacheWriteTokens": 0, "cost": 0.001},
+     "content": [
+       {"type": "thinking", "thinking": "Need to read the app file."},
+       {"type": "text", "text": "Reading files"},
+       {"type": "tool_use", "id": "t1", "name": "read_files", "input": {"files": [{"path": "src/app.ts"}]}}
+     ]},
+    {"id": "m3", "role": "user", "ts": 1780000002000,
+     "content": [{"type": "tool_result", "tool_use_id": "t1", "name": "read_files", "content": "export const app = 1;"}]},
+    {"id": "m4", "role": "assistant", "ts": 1780000003000,
+     "modelInfo": {"id": "example-model", "provider": "example-provider"},
+     "metrics": {"inputTokens": 20, "outputTokens": 10, "cacheReadTokens": 20, "cacheWriteTokens": 0, "cost": 0.002},
+     "content": "The build is fixed."},
+    {"id": "m5", "role": "user", "content": [{"type": "text", "text": "thanks"}]}
+  ]
+}

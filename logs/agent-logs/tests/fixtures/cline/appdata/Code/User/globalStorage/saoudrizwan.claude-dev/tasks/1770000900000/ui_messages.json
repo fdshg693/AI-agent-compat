@@ -1,0 +1,14 @@
+[
+  {"ts": 1770000900000, "type": "say", "say": "task", "text": "Refactor utils\nplease keep the API", "conversationHistoryIndex": -1},
+  {"ts": 1770000901000, "type": "say", "say": "api_req_started", "conversationHistoryIndex": 0,
+   "text": "{\"request\":\"fake request\",\"tokensIn\":100,\"tokensOut\":20,\"cacheWrites\":0,\"cacheReads\":50,\"cost\":0}"},
+  {"ts": 1770000902000, "type": "say", "say": "text", "text": "Looking at utils", "conversationHistoryIndex": 1,
+   "modelInfo": {"providerId": "example-provider", "modelId": "legacy-model", "mode": "act"}},
+  {"ts": 1770000903000, "type": "say", "say": "tool", "conversationHistoryIndex": 1,
+   "text": "{\"tool\":\"readFile\",\"path\":\"utils.ts\",\"content\":\"export function add() {}\"}"},
+  {"ts": 1770000904000, "type": "say", "say": "text", "text": "Done refact", "partial": true},
+  {"ts": 1770000905000, "type": "say", "say": "api_req_started", "conversationHistoryIndex": 2,
+   "text": "{\"request\":\"fake request 2\",\"tokensIn\":200,\"tokensOut\":20,\"cacheWrites\":0,\"cacheReads\":50,\"cost\":0}"},
+  {"ts": 1770000906000, "type": "say", "say": "completion_result", "text": "Done refactoring", "conversationHistoryIndex": 3},
+  {"ts": 1770000999000, "type": "ask", "ask": "resume_task"}
+]

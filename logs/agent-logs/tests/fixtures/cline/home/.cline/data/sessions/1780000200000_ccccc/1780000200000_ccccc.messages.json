@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "agent": "sub-1",
+  "sessionId": "1780000200000_ccccc",
+  "messages": [
+    {"id": "s1", "role": "user", "ts": 1780000200000, "content": [{"type": "text", "text": "Find TODOs"}]},
+    {"id": "s2", "role": "assistant", "ts": 1780000201000,
+     "modelInfo": {"id": "example-model", "provider": "example-provider"},
+     "metrics": {"inputTokens": 7, "outputTokens": 3, "cacheReadTokens": 0, "cacheWriteTokens": 0, "cost": 0.0007},
+     "content": [{"type": "text", "text": "No TODOs found."}]}
+  ]
+}

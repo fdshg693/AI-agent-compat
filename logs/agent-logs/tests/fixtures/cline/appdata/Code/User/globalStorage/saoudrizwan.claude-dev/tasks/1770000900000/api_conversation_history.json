@@ -1,0 +1,7 @@
+[
+  {"role": "user", "ts": 1770000900000, "content": [{"type": "text", "text": "<task>Refactor utils</task>"}]},
+  {"role": "assistant", "ts": 1770000902000,
+   "modelInfo": {"providerId": "example-provider", "modelId": "legacy-model", "mode": "act"},
+   "metrics": {"tokens": {"prompt": 100, "completion": 20, "cached": 50}, "cost": 0},
+   "content": [{"type": "text", "text": "Looking at utils"}]}
+]

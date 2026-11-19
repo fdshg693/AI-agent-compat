@@ -1,0 +1,2 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<user_query>\nplan the release\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"Here is a plan."}]}}

@@ -1,0 +1,3 @@
+{"version": 1, "agent": "lead", "sessionId": "1770000000000", "messages": [
+  {"id": "x1", "role": "user", "ts": 1770000000000, "content": [{"type": "text", "text": "Migrated task"}]}
+]}

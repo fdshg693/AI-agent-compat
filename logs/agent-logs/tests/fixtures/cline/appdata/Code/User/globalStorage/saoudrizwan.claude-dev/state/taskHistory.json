@@ -1,0 +1,11 @@
+[
+  {"id": "1770000000000", "ulid": "01FAKEULID0000000000000000", "ts": 1770000000000, "task": "Migrated task",
+   "tokensIn": 1, "tokensOut": 1, "cacheWrites": 0, "cacheReads": 0, "totalCost": 0, "size": 100,
+   "cwdOnTaskInitialization": "c:\\Users\\alice\\legacy", "isFavorited": false, "modelId": "legacy-model"},
+  {"id": "1770000500000", "ulid": "01FAKEULID0000000000000001", "ts": 1770000500000, "task": "Migrated via metadata",
+   "tokensIn": 2, "tokensOut": 2, "cacheWrites": 0, "cacheReads": 0, "totalCost": 0, "size": 100,
+   "cwdOnTaskInitialization": "c:\\Users\\alice\\other", "isFavorited": false, "modelId": "legacy-model"},
+  {"id": "1770000900000", "ulid": "01FAKEULID0000000000000002", "ts": 1770000900000, "task": "Refactor utils\nplease keep the API",
+   "tokensIn": 300, "tokensOut": 40, "cacheWrites": 0, "cacheReads": 100, "totalCost": 0, "size": 2048,
+   "cwdOnTaskInitialization": "c:\\Users\\alice\\legacy", "isFavorited": false, "modelId": "legacy-model"}
+]

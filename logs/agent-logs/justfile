@@ -1,0 +1,17 @@
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+
+# List available recipes
+default:
+    @just --list
+
+# Unit tests (fixtures only; never reads real logs)
+test:
+    mise exec -- uv run pytest "{{justfile_directory()}}/tests"
+
+# Run the CLI from the source tree (e.g. `just run sources`)
+run *args:
+    mise exec -- uv run --project "{{justfile_directory()}}" agent-logs {{args}}
+
+# Install `agent-logs` as a global command (editable)
+install:
+    mise exec -- uv tool install --editable "{{justfile_directory()}}"

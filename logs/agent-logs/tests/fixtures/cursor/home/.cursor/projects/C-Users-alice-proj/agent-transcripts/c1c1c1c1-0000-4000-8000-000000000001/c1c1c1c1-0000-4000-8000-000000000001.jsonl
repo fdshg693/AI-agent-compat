@@ -1,0 +1,5 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<timestamp>Sunday, Nov 16, 2025, 9:00 AM (UTC+9)</timestamp>\n<user_query>\nSummarize the README\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"path":"C:\\Users\\alice\\proj\\README.md"}}]}}
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Task","input":{"description":"Find TODOs","prompt":"grep TODO","subagent_type":"explore","model":"fast-model"}}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"The README describes a demo project."}]}}
+{"type":"turn_ended","status":"success"}

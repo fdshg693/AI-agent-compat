@@ -1,0 +1,28 @@
+{"timestamp":"2026-01-02T03:04:05.678Z","type":"session_meta","payload":{"id":"00000000-0000-7000-8000-000000000001","timestamp":"2026-01-02T03:04:05.678Z","cwd":"C:\\work\\demo","originator":"codex_cli_rs","cli_version":"0.0.0","source":"cli","model_provider":"openai","base_instructions":"FAKE-BASE-INSTRUCTIONS-SECRET","git":{"branch":"main","repository_url":"https://FAKE-TOKEN@example.invalid/demo.git"}}}
+{"timestamp":"2026-01-02T03:04:06.000Z","type":"turn_context","payload":{"turn_id":"t1","cwd":"C:\\work\\demo","approval_policy":"on-request","sandbox_policy":{"type":"read-only"},"model":"gpt-fake-codex","effort":"medium"}}
+{"timestamp":"2026-01-02T03:04:06.100Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}
+{"timestamp":"2026-01-02T03:04:06.150Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions>read-only</permissions instructions>"}]}}
+{"timestamp":"2026-01-02T03:04:06.160Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>C:\\work\\demo</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-01-02T03:04:06.200Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the build in demo"}]}}
+{"timestamp":"2026-01-02T03:04:06.210Z","type":"event_msg","payload":{"type":"user_message","message":"Fix the build in demo","images":[]}}
+{"timestamp":"2026-01-02T03:04:06.500Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Looking at the build script"}],"encrypted_content":"FAKE-ENCRYPTED-REASONING"}}
+{"timestamp":"2026-01-02T03:04:06.510Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"Looking at the build script"}}
+{"timestamp":"2026-01-02T03:04:07.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\": [\"npm\", \"run\", \"build\"]}","call_id":"call_1"}}
+{"timestamp":"2026-01-02T03:04:08.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"build failed: missing semicolon"}}
+{"timestamp":"2026-01-02T03:04:09.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Fixed the missing semicolon."}],"phase":"final_answer"}}
+{"timestamp":"2026-01-02T03:04:09.010Z","type":"event_msg","payload":{"type":"agent_message","message":"Fixed the missing semicolon.","phase":"final_answer"}}
+{"timestamp":"2026-01-02T03:04:09.050Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"plan_type":"FAKE-PLAN"}}}
+{"timestamp":"2026-01-02T03:04:09.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model_context_window":200000},"rate_limits":null}}
+{"timestamp":"2026-01-02T03:04:09.150Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model_context_window":200000},"rate_limits":null}}
+{"timestamp":"2026-01-02T03:04:09.200Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1","last_agent_message":"Fixed the missing semicolon."}}
+{"timestamp":"2026-01-02T03:05:00.000Z","type":"turn_context","payload":{"turn_id":"t2","cwd":"C:\\work\\demo","approval_policy":"on-request","sandbox_policy":{"type":"read-only"},"model":"gpt-fake-codex-mini"}}
+{"timestamp":"2026-01-02T03:05:00.100Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Now run the tests"}]}}
+{"timestamp":"2026-01-02T03:05:00.110Z","type":"event_msg","payload":{"type":"user_message","message":"Now run the tests","images":[]}}
+{"timestamp":"2026-01-02T03:05:01.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"not-json{","call_id":"call_2"}}
+{"timestamp":"2026-01-02T03:05:02.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_2","output":[{"type":"input_text","text":"3 passed"}]}}
+{"timestamp":"2026-01-02T03:05:03.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"All tests pass."}]}}
+{"timestamp":"2026-01-02T03:05:03.010Z","type":"event_msg","payload":{"type":"agent_message","message":"All tests pass."}}
+{"timestamp":"2026-01-02T03:05:03.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":250,"cached_input_tokens":100,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":300},"last_token_usage":{"input_tokens":150,"cached_input_tokens":60,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":180},"model_context_window":200000},"rate_limits":null}}
+{"timestamp":"2026-01-02T03:05:03.200Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t2","last_agent_message":"All tests pass."}}
+{"timestamp":"2026-01-02T03:05:04.000Z","type":"compacted","payload":{"message":"Summary: fixed the build, tests pass"}}
+{"timestamp":"2026-01-02T03:05:05.000Z","type":"world_state","payload":{"note":"unknown record"}}

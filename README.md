@@ -1,10 +1,12 @@
 # agent-compat/
 
-このリポジトリを Claude Code 以外の AI コーディングツール（Codex・GitHub Copilot・Cursor・Antigravity・Cline・Kilo Code）でも使えるようにする仕組みと、その資料を置く。スキルの実体は置かない（スキルは `skills/plugins/` と `tools/_plugin/` に Claude Code スキルとして 1 か所だけ置く）。
+このリポジトリを Claude Code 以外の AI コーディングツール（Codex・GitHub Copilot・Cursor・Antigravity・Cline・Kilo Code）でも使えるようにする仕組みと、その資料を置く。スキルの実体は、ここの CLI に付属する使い方スキル（`_plugin/`）を除いて置かない（それ以外のスキルは `skills/plugins/` と `tools/_plugin/` に Claude Code スキルとして 1 か所だけ置く）。
 
 ## 中身
 
-- [agent-tooling/](agent-tooling/README.md) — 複数ツール向けのフックとコンテキスト注入。フックの正本はここで、`.claude/hooks/` などはインストール先（[hook-distribution](../maintenance/docs/hook-distribution.md)）
+- [hooks/](hooks/README.md) — 複数ツール向けのフックとコンテキスト注入（[hooks/agent-tooling/](hooks/agent-tooling/README.md)）。フックの正本はここで、`.claude/hooks/` などはインストール先（[hook-distribution](../maintenance/docs/hook-distribution.md)）
+- [logs/](logs/README.md) — 各ツールがローカルに残すログを横断して一覧・検索・集計する CLI（[logs/agent-logs/](logs/agent-logs/README.md)、読み取り専用）。ログ形式の正本は知識スキル
+- [_plugin/agent-compat-tools/](_plugin/agent-compat-tools/README.md) — 上の CLI の使い方スキル（`agent-logs-cli`）をまとめた Claude Code プラグイン。マーケットプレイスに載る。CLI 本体は同梱しない
 - [formats/](formats/) — ツール固有の書式でしか書けないファイルの最小サンプル（`formats/<tool>/` の `skill`・`plugin`・`rule`・`memory` 等）。各ツールの README が、対応する置き場所と根拠の知識スキルを示す
 - [docs/differences/](docs/differences/index.md) — Claude Code を基準にした、ツールごとの書き方の相違点
 
